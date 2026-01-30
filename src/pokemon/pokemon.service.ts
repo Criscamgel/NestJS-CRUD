@@ -26,8 +26,14 @@ export class PokemonService {
 
   }
 
-  async findAll() {
-    return await this.pokemonModel.find({});
+  async findAll({ limit = 10, offset = 0 }) {
+    return await this.pokemonModel.find()
+      .limit(limit)
+      .skip(offset)
+      .sort({
+        no: 1
+      })
+      .select('-__v');
   }
 
   async findOne(term: string) {
