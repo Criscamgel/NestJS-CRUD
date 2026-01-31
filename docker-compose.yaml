@@ -3,7 +3,7 @@ version: '3'
 
 services:
   db:
-    image: mongo:7
+    image: mongo:7.0
     restart: always
     ports:
       - 27017:27017
