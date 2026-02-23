@@ -10,6 +10,9 @@ import { CommonModule } from './common/common.module';
 import { SeedModule } from './seed/seed.module';
 import { EnvConfiguration } from './config/env.config';
 import { JoiValidationSchema } from './config/joi.validation';
+import { AuthModule } from './auth/auth.module';
+import { CheckModule } from './check/check.module';
+import { CompanyModule } from './company/company.module';
 
 @Module({
   imports: [
@@ -22,10 +25,14 @@ import { JoiValidationSchema } from './config/joi.validation';
     }),
     PokemonModule,
     MongooseModule.forRoot( process.env.MONGODB!, {
-      dbName: 'pokemonsdb'
+      dbName: 'chekydb',
+      autoCreate: true
     } ),
     CommonModule,
     SeedModule,
+    AuthModule,
+    CheckModule,
+    CompanyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

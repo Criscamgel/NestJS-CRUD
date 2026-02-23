@@ -28,7 +28,7 @@ yarn start:dev
 
 8. Reconstruir la base de datos con la semilla
 ```
-http://ocalhost:3000/api/v2/seed
+http://localhost:3000/api/v2/seed
 ```
 
 ### Stack usado

@@ -2,14 +2,14 @@
 version: '3'
 
 services:
-  pokedexapp:
+  checkyBK:
     depends_on:
       - db
     build: 
       context: .
       dockerfile: Dockerfile
-    image: pokedex-docker
-    container_name: pokedexapp
+    image: checkyBK-docker
+    container_name: checkyBK
     restart: always # reiniciar el contenedor si se detiene
     ports:
       - "${PORT}:${PORT}"
@@ -23,11 +23,11 @@ services:
 
   db:
     image: mongo:7
-    container_name: mongo-poke
+    container_name: checkyBK
     restart: always
     ports:
       - 27017:27017
     environment:
-      MONGODB_DATABASE: nest-pokemon
+      MONGODB_DATABASE: nest-checky
     volumes:
       - ./mongo:/data/db
