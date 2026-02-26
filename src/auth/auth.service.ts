@@ -1,26 +1,50 @@
-import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { CreateUserDto } from './dto/create-user.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { User } from './entities/user.entity';
+import { Model } from 'mongoose';
+import { CounterId } from 'src/common/entities/counter-id.entity';
+import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
-  }
 
-  findAll() {
-    return `This action returns all auth`;
-  }
+  constructor(
+    @InjectModel(User.name)
+    private readonly userModel: Model<User>,
+    @InjectModel(CounterId.name)
+    private readonly counterIdModel: Model<any>
+  ) {}
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
+  async create(createUserDto: CreateUserDto) {
+    
+    try {
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
+      const counter = await this.counterIdModel.findByIdAndUpdate(
+        'users',  // ID del contador
+        { $inc: { seq: 1 } },  // Incrementa +1
+        { new: true, upsert: true },  // Crea si no existe, devuelve nuevo valor
+      );
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+        createUserDto.id = counter.seq.toString();
+
+      const user = await this.userModel.create( createUserDto );
+      return {
+        message: 'Usuario creado correctamente',
+        data: { user }
+      }
+    } catch (error: unknown) {
+
+      if (isMongoDuplicateKeyError(error)) {
+      // normalmente viene: error.keyValue o error.keyPattern
+      const field = error?.keyValue ? Object.keys(error.keyValue)[0] : 'campo';
+      throw new ConflictException(`Ya existe un usuario con ese ${field}`);
+    }
+      if (error instanceof Error) {
+      throw new BadRequestException(error.message ?? 'Error al crear usuario');
+    }
+      throw new BadRequestException('Error desconocido al crear usuario');
+    }
+
   }
 }

@@ -19,7 +19,7 @@ export class Check extends Document {
     @Prop({
         required: true
     })
-    lastname!: string;
+    lastName!: string;
 
     @Prop({
         required: true
