@@ -8,12 +8,12 @@ import { JwtPayload } from "../interfaces/JwtPayload";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy( Strategy ) {
+export class JwtStrategy extends PassportStrategy(Strategy) {
 
     constructor(
-        @InjectModel( User.name )
+        @InjectModel(User.name)
         private readonly userModel: Model<User>,
-        configService: ConfigService 
+        configService: ConfigService
     ) {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -23,13 +23,13 @@ export class JwtStrategy extends PassportStrategy( Strategy ) {
     }
 
 
-    async validate( payload: JwtPayload ): Promise<User> {
+    async validate(payload: JwtPayload): Promise<User> {
 
-        const { email } = payload;
-        const user = await this.userModel.findOne({ email });
+        const { id } = payload;
+        const user = await this.userModel.findOne({ id });
 
-        if( !user ) throw new UnauthorizedException( 'Token no válido' );
-        if( !user.isActive ) throw new UnauthorizedException( 'Usuario inactivo, comuniquese con el administrador' );
+        if (!user) throw new UnauthorizedException('Token no válido');
+        if (!user.isActive) throw new UnauthorizedException('Usuario inactivo, comuniquese con el administrador');
 
         return user;
     }

@@ -1,24 +1,30 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
 import { Document } from "mongoose";
 
-@Schema()
+@Schema({
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+})
 export class User extends Document {
 
     @Prop({
-            unique: true,
-            index: true,
-            required: true
-        })
+        unique: true,
+        index: true,
+        required: true
+    })
     id!: string;
 
     @Prop({
-        required: true
+        unique: true,
+        index: true,
+        required: true,
     })
     email!: string;
 
     @Prop({
+        unique: true,
+        index: true,
         required: true,
-        unique: true
     })
     document!: string;
 
@@ -37,6 +43,7 @@ export class User extends Document {
     })
     lastName!: string;
 
+
     @Prop({
         //required: true,
         default: ['user']
@@ -53,6 +60,24 @@ export class User extends Document {
     })
     isActive!: boolean;
 
+    get fullName(): string {
+        return `${this.name} ${this.lastName}`;
+    }
 }
 
-export const UserSchema = SchemaFactory.createForClass( User );
+export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.virtual('fullName').get(function () {
+    return `${this.name} ${this.lastName}`;
+});
+
+UserSchema.pre('save', function () {
+    this.email = this.email.toLowerCase().trim();
+});
+
+UserSchema.pre('findOneAndUpdate', function () {
+    const update = this.getUpdate() as any;
+    if (update.email) {
+        update.email = update.email.toLowerCase().trim();
+    }
+});
