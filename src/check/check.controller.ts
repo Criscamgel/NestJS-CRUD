@@ -2,10 +2,12 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { CheckService } from './check.service';
 import { CreateCheckDto } from './dto/create-check.dto';
 import { UpdateCheckDto } from './dto/update-check.dto';
+import { Auth } from 'src/auth/decorators';
 
 @Controller('check')
+@Auth()
 export class CheckController {
-  constructor(private readonly checkService: CheckService) {}
+  constructor(private readonly checkService: CheckService) { }
 
   @Post()
   create(@Body() createCheckDto: CreateCheckDto) {
