@@ -12,6 +12,7 @@ import { JoiValidationSchema } from './config/joi.validation';
 import { AuthModule } from './auth/auth.module';
 import { CheckModule } from './check/check.module';
 import { CompanyModule } from './company/company.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { CompanyModule } from './company/company.module';
     AuthModule,
     CheckModule,
     CompanyModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

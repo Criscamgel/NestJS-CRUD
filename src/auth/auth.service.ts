@@ -12,6 +12,8 @@ import { LoginUserDto } from './dto';
 import { ApiResponse } from 'src/common/interfaces/api-response.interface';
 import { LoginUserResponseData } from './interfaces/LoginUserResponseData';
 import { JwtPayload } from './interfaces/JwtPayload';
+import { RecoverPasswordDto } from './dto/recover-password.dto';
+import { EmailService } from 'src/email/email.service';
 
 
 @Injectable()
@@ -23,6 +25,7 @@ export class AuthService {
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<any>,
     private readonly jwtService: JwtService,
+    private readonly emailService: EmailService,
   ) { }
 
   async create(createUserDto: CreateUserDto) {
@@ -97,6 +100,44 @@ export class AuthService {
           password: user.password
         }
       },
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async recoverPassword(recoverPasswordDto: RecoverPasswordDto) {
+    const { email } = recoverPasswordDto;
+
+    const user = await this.userModel.findOne({ email }).lean();
+
+    if (!user) {
+      throw new NotFoundException(`No existe un usuario asociado al correo: ${email}`);
+    }
+
+    const recoveryToken = this.getJwtToken({ id: user.id });
+    const recoveryLink = `http://localhost:3000/auth/reset-password?token=${recoveryToken}`;
+
+    const htmlBody = `
+      <h3>Recuperación de Contraseña</h3>
+      <p>Has solicitado recuperar tu contraseña. Haz clic en el siguiente enlace para continuar:</p>
+      <br>
+      <a href="${recoveryLink}" style="padding: 10px 15px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px;">Recuperar Contraseña</a>
+      <br><br>
+      <p>Si no has solicitado este cambio, puedes ignorar este correo de forma segura.</p>
+    `;
+
+    const emailSent = await this.emailService.sendEmail({
+      to: email,
+      subject: 'Recuperación de Contraseña - Cheky',
+      htmlBody: htmlBody
+    });
+
+    if (!emailSent) {
+      throw new BadRequestException('Ha ocurrido un error interno al intentar enviar el correo. Por favor intente más tarde.');
+    }
+
+    return {
+      success: true,
+      message: 'Correo de recuperación enviado exitosamente. Verifica tu bandeja de entrada o spam.',
       timestamp: new Date().toISOString()
     };
   }
