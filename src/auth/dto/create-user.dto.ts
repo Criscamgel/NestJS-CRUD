@@ -1,5 +1,5 @@
-import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
-
+import { IsEmail, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
+import { ValidRoles } from "../interfaces/valid-roles";
 
 export class CreateUserDto {
 
@@ -34,5 +34,9 @@ export class CreateUserDto {
     @MinLength(3)
     lastName!: string;
 
+    @IsEnum(ValidRoles, {
+        message: `El rol debe ser válido: admin, superUser, user`
+    })
+    role!: ValidRoles;
 
 }

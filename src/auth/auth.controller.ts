@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, SetMetadata } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Req,
+  SetMetadata,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto, RecoverPasswordDto } from './dto';
 import { AuthGuard } from '@nestjs/passport';
@@ -11,10 +22,10 @@ import { ValidRoles } from './interfaces';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @Auth(ValidRoles.superUser, ValidRoles.admin)
+  //@Auth(ValidRoles.superUser, ValidRoles.admin)
   createUser(@Body() createUserDto: CreateUserDto) {
     return this.authService.create(createUserDto);
   }
@@ -36,9 +47,8 @@ export class AuthController {
     @GetUser() user: User,
     @GetUser('email') userEmail: string,
     @RawHeaders() rawHeaders: string[],
-    @GetHeaders() headers: any
+    @GetHeaders() headers: any,
   ) {
-
     //console.log({ user: request.user });
     return {
       message: 'Acceso correcto',
@@ -46,9 +56,9 @@ export class AuthController {
         user,
         userEmail,
         rawHeaders,
-        headers
-      }
-    }
+        headers,
+      },
+    };
   }
 
   // @SetMetadata('roles', ['admin', 'super-user'])
@@ -56,23 +66,19 @@ export class AuthController {
   @Get('private2')
   @RoleProtected(ValidRoles.admin)
   @UseGuards(AuthGuard(), UserRoleGuard)
-  privateRoute2(
-    @GetUser() user: User
-  ) {
+  privateRoute2(@GetUser() user: User) {
     return {
       ok: true,
-      user
-    }
+      user,
+    };
   }
 
   @Get('private3')
   @Auth(ValidRoles.admin, ValidRoles.superUser)
-  privateRoute3(
-    @GetUser() user: User
-  ) {
+  privateRoute3(@GetUser() user: User) {
     return {
       ok: true,
-      user
-    }
+      user,
+    };
   }
 }

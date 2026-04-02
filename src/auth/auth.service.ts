@@ -40,10 +40,11 @@ export class AuthService {
 
       createUserDto.id = counter.seq.toString();
 
-      const { password, ...userData } = createUserDto;
+      const { password, role, ...userData } = createUserDto;
 
       const user = await this.userModel.create({
         ...userData,
+        roles: [role],
         password: bcrypt.hashSync(password, 10)
       });
 
