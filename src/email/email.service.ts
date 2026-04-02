@@ -20,13 +20,26 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
   constructor(private readonly configService: ConfigService) {
-    this.transporter = nodemailer.createTransport({
-      service: this.configService.get<string>('mailerService'),
+    const service = this.configService.get<string>('mailerService');
+    const host = this.configService.get<string>('mailerHost');
+    const port = this.configService.get<number>('mailerPort');
+
+    const transportConfig: any = {
       auth: {
         user: this.configService.get<string>('mailerEmail'),
         pass: this.configService.get<string>('mailerSecretKey'),
       },
-    });
+    };
+
+    if (host) {
+      transportConfig.host = host;
+      transportConfig.port = port || 465;
+      transportConfig.secure = transportConfig.port === 465; // true for 465, false for other ports
+    } else if (service) {
+      transportConfig.service = service;
+    }
+
+    this.transporter = nodemailer.createTransport(transportConfig);
   }
 
   async sendEmail(options: SendMailOptions): Promise<boolean> {

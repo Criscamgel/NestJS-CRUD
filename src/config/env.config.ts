@@ -4,6 +4,8 @@ export const EnvConfiguration = () => ({
     port: process.env.PORT || 3002,
     defaultLimit: process.env.DEFAULT_LIMIT || 7,
     mailerService: process.env.MAILER_SERVICE,
+    mailerHost: process.env.MAILER_HOST,
+    mailerPort: process.env.MAILER_PORT ? parseInt(process.env.MAILER_PORT, 10) : undefined,
     mailerEmail: process.env.MAILER_EMAIL,
     mailerSecretKey: process.env.MAILER_SECRET_KEY,
 });
