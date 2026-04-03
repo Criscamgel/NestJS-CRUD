@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserSchema } from './entities/user.entity';
@@ -15,10 +21,8 @@ import { JwtPayload } from './interfaces/JwtPayload';
 import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { EmailService } from 'src/email/email.service';
 
-
 @Injectable()
 export class AuthService {
-
   constructor(
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
@@ -26,16 +30,14 @@ export class AuthService {
     private readonly counterIdModel: Model<any>,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
-  ) { }
+  ) {}
 
   async create(createUserDto: CreateUserDto) {
-
     try {
-
       const counter = await this.counterIdModel.findByIdAndUpdate(
-        'users',  // ID del contador
-        { $inc: { seq: 1 } },  // Incrementa +1
-        { new: true, upsert: true },  // Crea si no existe, devuelve nuevo valor
+        'users', // ID del contador
+        { $inc: { seq: 1 } }, // Incrementa +1
+        { new: true, upsert: true }, // Crea si no existe, devuelve nuevo valor
       );
 
       createUserDto.id = counter.seq.toString();
@@ -45,7 +47,7 @@ export class AuthService {
       const user = await this.userModel.create({
         ...userData,
         roles: [role],
-        password: bcrypt.hashSync(password, 10)
+        password: bcrypt.hashSync(password, 10),
       });
 
       const { password: _p, __v, _id, ...safeUser } = user.toObject();
@@ -54,41 +56,45 @@ export class AuthService {
         message: 'Usuario creado correctamente',
         data: {
           accessToken: this.getJwtToken({ id: user.id }),
-          user: safeUser
+          user: safeUser,
         },
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      };
     } catch (error: unknown) {
-
       if (isMongoDuplicateKeyError(error)) {
         // normalmente viene: error.keyValue o error.keyPattern
-        const field = error?.keyValue ? Object.keys(error.keyValue)[0] : 'campo';
+        const field = error?.keyValue
+          ? Object.keys(error.keyValue)[0]
+          : 'campo';
         throw new ConflictException(`Ya existe un usuario con ese ${field}`);
       }
       if (error instanceof Error) {
-        throw new BadRequestException(error.message ?? 'Error al crear usuario');
+        throw new BadRequestException(
+          error.message ?? 'Error al crear usuario',
+        );
       }
       throw new BadRequestException('Error desconocido al crear usuario');
     }
-
   }
 
   private getJwtToken(payload: JwtPayload) {
-
     const token = this.jwtService.sign(payload);
     return token;
   }
 
-  async login(loginUserDto: LoginUserDto): Promise<ApiResponse<LoginUserResponseData>> {
-
+  async login(
+    loginUserDto: LoginUserDto,
+  ): Promise<ApiResponse<LoginUserResponseData>> {
     const { password, email } = loginUserDto;
 
-    const user = await this.userModel.findOne({ email })
-      .select('email password id')  // ← SOLO estos 3 campos
+    const user = await this.userModel
+      .findOne({ email })
+      .select('email password id') // ← SOLO estos 3 campos
       .lean();
 
     if (!user) throw new UnauthorizedException('Usuario no encontrado (email)');
-    if (!bcrypt.compareSync(password, user.password)) throw new UnauthorizedException('Contraseña invalida o incorrecta');
+    if (!bcrypt.compareSync(password, user.password))
+      throw new UnauthorizedException('Contraseña invalida o incorrecta');
 
     return {
       success: true,
@@ -98,10 +104,10 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          password: user.password
-        }
+          password: user.password,
+        },
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -111,11 +117,13 @@ export class AuthService {
     const user = await this.userModel.findOne({ email }).lean();
 
     if (!user) {
-      throw new NotFoundException(`No existe un usuario asociado al correo: ${email}`);
+      throw new NotFoundException(
+        `No existe un usuario asociado al correo: ${email}`,
+      );
     }
 
     const recoveryToken = this.getJwtToken({ id: user.id });
-    const recoveryLink = `http://localhost:3000/auth/reset-password?token=${recoveryToken}`;
+    const recoveryLink = `http://localhost:${process.env.PORT}/auth/reset-password?token=${recoveryToken}`;
 
     const htmlBody = `
       <h3>Recuperación de Contraseña</h3>
@@ -129,17 +137,20 @@ export class AuthService {
     const emailSent = await this.emailService.sendEmail({
       to: email,
       subject: 'Recuperación de Contraseña - Cheky',
-      htmlBody: htmlBody
+      htmlBody: htmlBody,
     });
 
     if (!emailSent) {
-      throw new BadRequestException('Ha ocurrido un error interno al intentar enviar el correo. Por favor intente más tarde.');
+      throw new BadRequestException(
+        'Ha ocurrido un error interno al intentar enviar el correo. Por favor intente más tarde.',
+      );
     }
 
     return {
       success: true,
-      message: 'Correo de recuperación enviado exitosamente. Verifica tu bandeja de entrada o spam.',
-      timestamp: new Date().toISOString()
+      message:
+        'Correo de recuperación enviado exitosamente. Verifica tu bandeja de entrada o spam.',
+      timestamp: new Date().toISOString(),
     };
   }
 }

@@ -20,21 +20,22 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
   constructor(private readonly configService: ConfigService) {
-    const service = this.configService.get<string>('mailerService');
-    const host = this.configService.get<string>('mailerHost');
-    const port = this.configService.get<number>('mailerPort');
+    const service = this.configService.get<string>('MAILER_SERVICE');
+    const host = this.configService.get<string>('MAILER_HOST');
+    const portRaw = this.configService.get<any>('MAILER_PORT');
+    const port = portRaw ? parseInt(portRaw.toString(), 10) : 465;
 
     const transportConfig: any = {
       auth: {
-        user: this.configService.get<string>('mailerEmail'),
-        pass: this.configService.get<string>('mailerSecretKey'),
+        user: this.configService.get<string>('MAILER_EMAIL'),
+        pass: this.configService.get<string>('MAILER_SECRET_KEY'),
       },
     };
 
     if (host) {
       transportConfig.host = host;
-      transportConfig.port = port || 465;
-      transportConfig.secure = transportConfig.port === 465; // true for 465, false for other ports
+      transportConfig.port = port;
+      transportConfig.secure = port === 465; // true for 465, false for other ports
     } else if (service) {
       transportConfig.service = service;
     }
@@ -47,7 +48,7 @@ export class EmailService {
 
     try {
       const sentInformation = await this.transporter.sendMail({
-        from: this.configService.get<string>('mailerEmail'), // Added 'from' to avoid being marked as spam often
+        from: this.configService.get<string>('MAILER_EMAIL'), // Added 'from' to avoid being marked as spam often
         to: to,
         subject: subject,
         html: htmlBody,
