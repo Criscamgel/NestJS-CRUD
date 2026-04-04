@@ -15,6 +15,9 @@ export class Company extends Document {
   @Prop({ required: true, unique: true })
   nit!: string;
 
+  @Prop({ required: true })
+  city!: string;
+
   @Prop({ default: true })
   isActive!: boolean;
 }

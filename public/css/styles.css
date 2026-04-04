@@ -1,9 +1,55 @@
-
 html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #ffffff;
+    font-family: 'Inter', sans-serif;
+}
+
+.container {
+    text-align: center;
     padding: 20px;
-    background-color: gainsboro;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.isotipo {
+    width: 200px; 
+    height: auto;
+    margin-bottom: 25px;
 }
 
 h1 {
-    font-size: 20px;
+    font-size: 3.5rem;
+    color: #064539; 
+    line-height: 1.1;
+    margin: 0;
+    letter-spacing: -1.5px;
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 2.2rem;
+        letter-spacing: -0.5px;
+    }
+
+    .isotipo {
+        width: 100px;
+        margin-bottom: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 1.8rem;
+    }
+    
+    .isotipo {
+        width: 100px;
+    }
 }
