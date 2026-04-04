@@ -7,7 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ValidRoles } from '../interfaces/valid-roles';
+import { ValidRoles } from '../../auth/interfaces/valid-roles';
 
 export class CreateUserDto {
   @IsOptional()

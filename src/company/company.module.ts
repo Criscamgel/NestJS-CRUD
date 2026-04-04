@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CompanyService } from './company.service';
 import { CompanyController } from './company.controller';
 import { AuthModule } from 'src/auth/auth.module';
@@ -10,11 +10,12 @@ import { CounterId, CounterIdSchema } from 'src/common/entities/counter-id.entit
   controllers: [CompanyController],
   providers: [CompanyService],
   imports: [
-    AuthModule,
+    forwardRef(() => AuthModule),
     MongooseModule.forFeature([
       { name: Company.name, schema: CompanySchema },
       { name: CounterId.name, schema: CounterIdSchema }
     ])
-  ]
+  ],
+  exports: [MongooseModule, CompanyService]
 })
 export class CompanyModule { }
