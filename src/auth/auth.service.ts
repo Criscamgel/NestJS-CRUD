@@ -32,7 +32,32 @@ export class AuthService {
     private readonly emailService: EmailService,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, creator: User) {
+    if (creator.roles?.includes('admin')) {
+      if (createUserDto.role !== 'user') {
+        throw new UnauthorizedException(
+          'Los admin solo pueden crear usuarios de tipo user',
+        );
+      }
+      // Heredar compañía del admin
+      createUserDto.company = creator.company;
+    } else if (creator.roles?.includes('superAdmin')) {
+      if (createUserDto.role !== 'admin' && createUserDto.role !== 'user') {
+        throw new UnauthorizedException(
+          'Los superAdmin solo pueden crear usuarios de tipo admin o user',
+        );
+      }
+      if (!createUserDto.company) {
+        throw new BadRequestException(
+          'Debe especificar la propiedad "company" (empresa) al crear el usuario',
+        );
+      }
+    } else {
+      throw new UnauthorizedException(
+        'No tienes permisos suficientes para crear usuarios',
+      );
+    }
+
     try {
       const counter = await this.counterIdModel.findByIdAndUpdate(
         'users', // ID del contador

@@ -45,4 +45,8 @@ export class CreateUserDto {
     message: `El rol debe ser válido: admin, superAdmin, user`,
   })
   role!: ValidRoles;
+
+  @IsOptional()
+  @IsString()
+  company?: string;
 }
