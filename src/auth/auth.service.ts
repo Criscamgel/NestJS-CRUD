@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserSchema } from './entities/user.entity';
 import { Model } from 'mongoose';
@@ -100,6 +101,65 @@ export class AuthService {
       }
       throw new BadRequestException('Error desconocido al crear usuario');
     }
+  }
+
+  async findAllUsers() {
+    return this.userModel.find().select('-password').exec();
+  }
+
+  async toggleUserStatus(id: string) {
+    const user = await this.userModel.findOne({ id });
+    if (!user) {
+      throw new NotFoundException(`Usuario con id ${id} no encontrado`);
+    }
+    
+    user.isActive = !user.isActive;
+    await user.save();
+    
+    return { message: `Usuario ${user.isActive ? 'activado' : 'desactivado'} exitosamente` };
+  }
+
+  async updateUser(id: string, updateUserDto: UpdateUserDto, editor: User) {
+    const targetUser = await this.userModel.findOne({ id });
+    if (!targetUser) {
+      throw new NotFoundException(`Usuario con id ${id} no encontrado`);
+    }
+
+    if (editor.roles?.includes('admin')) {
+      if (!targetUser.roles?.includes('user')) {
+        throw new UnauthorizedException('Los admin solo pueden editar usuarios de tipo user');
+      }
+    } else if (editor.roles?.includes('superAdmin')) {
+      if (!targetUser.roles?.includes('admin') && !targetUser.roles?.includes('user')) {
+        throw new UnauthorizedException('Los superAdmin solo pueden editar usuarios de tipo admin o user');
+      }
+    } else {
+      throw new UnauthorizedException('No tienes permisos suficientes para editar usuarios');
+    }
+
+    if (updateUserDto.password) {
+      updateUserDto.password = bcrypt.hashSync(updateUserDto.password, 10);
+    }
+
+    // Role cannot be changed via simple update usually, but if provided, validate it:
+    // If you want to allow role changes, you might need extra checks. We'll pass it if valid.
+    if (updateUserDto.role) {
+      updateUserDto['roles'] = [updateUserDto.role];
+    }
+    
+    // Extrayendo el payload sin propiedades conflictivas base
+    const { role, ...updatePayload } = updateUserDto;
+
+    const updatedUser = await this.userModel.findOneAndUpdate(
+      { id },
+      updatePayload,
+      { new: true }
+    ).select('-password').exec();
+
+    return {
+      message: 'Usuario actualizado exitosamente',
+      user: updatedUser
+    };
   }
 
   private getJwtToken(payload: JwtPayload) {

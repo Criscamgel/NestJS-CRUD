@@ -11,7 +11,7 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto, RecoverPasswordDto } from './dto';
+import { CreateUserDto, LoginUserDto, RecoverPasswordDto, UpdateUserDto } from './dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Auth, GetUser } from './decorators';
 import { RawHeaders, GetHeaders } from '../common/decorators';
@@ -41,6 +41,28 @@ export class AuthController {
   @Post('recover-password')
   recoverPassword(@Body() recoverPasswordDto: RecoverPasswordDto) {
     return this.authService.recoverPassword(recoverPasswordDto);
+  }
+
+  @Get('users')
+  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
+  findAllUsers() {
+    return this.authService.findAllUsers();
+  }
+
+  @Patch('users/:id/toggle-status')
+  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
+  toggleUserStatus(@Param('id') id: string) {
+    return this.authService.toggleUserStatus(id);
+  }
+
+  @Patch('users/:id')
+  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
+  updateUser(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @GetUser() editor: User,
+  ) {
+    return this.authService.updateUser(id, updateUserDto, editor);
   }
 
   @Get('private')
