@@ -7,7 +7,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginUserDto, RecoverPasswordDto } from './dto';
+import { LoginUserDto, RecoverPasswordDto, ResetPasswordDto } from './dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Auth, GetUser } from './decorators';
 import { RawHeaders, GetHeaders } from '../common/decorators';
@@ -37,6 +37,18 @@ export class AuthController {
   @Post('recover-password')
   recoverPassword(@Body() recoverPasswordDto: RecoverPasswordDto) {
     return this.authService.recoverPassword(recoverPasswordDto);
+  }
+
+  @Post('reset-password')
+  @UseGuards(AuthGuard())
+  resetPassword(
+    @GetUser() user: User,
+    @Body() resetPasswordDto: ResetPasswordDto,
+    @Req() request: any
+  ) {
+    const authHeader = request.headers.authorization;
+    const token = authHeader.split(' ')[1];
+    return this.authService.resetPassword(user, resetPasswordDto, token);
   }
 
   @Get('private')

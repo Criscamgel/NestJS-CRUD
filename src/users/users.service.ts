@@ -37,26 +37,31 @@ export class UsersService {
           'Los admin solo pueden crear usuarios de tipo user',
         );
       }
-      
+
       // Inherit the company from the admin creator
       if (!creator.company) {
-        throw new BadRequestException('El usuario administrador no está vinculado a una compañía válida');
+        throw new BadRequestException(
+          'El usuario administrador no está vinculado a una compañía válida',
+        );
       }
       createUserDto.company = creator.company;
-      
-      // Verify that the inherited company actually exists
-      const companyExists = await this.companyModel.findOne({ id: creator.company });
-      if (!companyExists) {
-        throw new NotFoundException(`La compañía con id ${creator.company} asociada al administrador no existe`);
-      }
 
+      // Verify that the inherited company actually exists
+      const companyExists = await this.companyModel.findOne({
+        id: creator.company,
+      });
+      if (!companyExists) {
+        throw new NotFoundException(
+          `La compañía con id ${creator.company} asociada al administrador no existe`,
+        );
+      }
     } else if (creator.roles?.includes('superAdmin')) {
       if (createUserDto.role !== 'admin' && createUserDto.role !== 'user') {
         throw new UnauthorizedException(
           'Los superAdmin solo pueden crear usuarios de tipo admin o user',
         );
       }
-      
+
       if (!createUserDto.company) {
         throw new BadRequestException(
           'Debe especificar la propiedad "company" (empresa) al crear el usuario',
@@ -65,18 +70,21 @@ export class UsersService {
 
       // Convert to string safely in case an integer was sent by mistake, though the DTO enforces strings
       const companyId = String(createUserDto.company);
-      
+
       if (!/^\d+$/.test(companyId)) {
-        throw new BadRequestException('El id de la compañía no es válido, debe ser un valor entero (ej. "1", "2")');
+        throw new BadRequestException(
+          'El id de la compañía no es válido, debe ser un valor entero (ej. "1", "2")',
+        );
       }
 
       const companyExists = await this.companyModel.findOne({ id: companyId });
       if (!companyExists) {
-        throw new NotFoundException(`La compañía con id ${companyId} no existe`);
+        throw new NotFoundException(
+          `La compañía con id ${companyId} no existe`,
+        );
       }
 
       createUserDto.company = companyId;
-
     } else {
       throw new UnauthorizedException(
         'No tienes permisos suficientes para crear usuarios',
@@ -102,7 +110,7 @@ export class UsersService {
       const { password: _p, __v, _id, ...safeUser } = user.toObject();
 
       const recoveryToken = this.jwtService.sign({ id: user.id });
-      const recoveryLink = `http://localhost:${process.env.PORT}/auth/reset-password?token=${recoveryToken}`;
+      const recoveryLink = `http://ex${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
 
       const htmlBody = `
         <h3>Bienvenido a Cheky</h3>
@@ -113,16 +121,19 @@ export class UsersService {
         <p>Si consideras que esto es un error, puedes ignorar este correo de forma segura.</p>
       `;
 
-      await this.emailService.sendEmail({
-        to: user.email,
-        subject: 'Bienvenido a Cheky - Establece tu contraseña',
-        htmlBody: htmlBody,
-      }).catch(e => {
-        console.error('No se pudo enviar el correo de bienvenida', e);
-      });
+      await this.emailService
+        .sendEmail({
+          to: user.email,
+          subject: 'Bienvenido a Cheky - Establece tu contraseña',
+          htmlBody: htmlBody,
+        })
+        .catch((e) => {
+          console.error('No se pudo enviar el correo de bienvenida', e);
+        });
 
       return {
-        message: 'Usuario creado correctamente. Se le ha enviado un correo para configurar su contraseña.',
+        message:
+          'Usuario creado correctamente. Se le ha enviado un correo para configurar su contraseña.',
         data: {
           user: safeUser,
         },
@@ -130,11 +141,15 @@ export class UsersService {
       };
     } catch (error: unknown) {
       if (isMongoDuplicateKeyError(error)) {
-        const field = error?.keyValue ? Object.keys(error.keyValue)[0] : 'campo';
+        const field = error?.keyValue
+          ? Object.keys(error.keyValue)[0]
+          : 'campo';
         throw new ConflictException(`Ya existe un usuario con ese ${field}`);
       }
       if (error instanceof Error) {
-        throw new BadRequestException(error.message ?? 'Error al crear usuario');
+        throw new BadRequestException(
+          error.message ?? 'Error al crear usuario',
+        );
       }
       throw new BadRequestException('Error desconocido al crear usuario');
     }
@@ -149,11 +164,13 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`Usuario con id ${id} no encontrado`);
     }
-    
+
     user.isActive = !user.isActive;
     await user.save();
-    
-    return { message: `Usuario ${user.isActive ? 'activado' : 'desactivado'} exitosamente` };
+
+    return {
+      message: `Usuario ${user.isActive ? 'activado' : 'desactivado'} exitosamente`,
+    };
   }
 
   async updateUser(id: string, updateUserDto: UpdateUserDto, editor: User) {
@@ -164,14 +181,23 @@ export class UsersService {
 
     if (editor.roles?.includes('admin')) {
       if (!targetUser.roles?.includes('user')) {
-        throw new UnauthorizedException('Los admin solo pueden editar usuarios de tipo user');
+        throw new UnauthorizedException(
+          'Los admin solo pueden editar usuarios de tipo user',
+        );
       }
     } else if (editor.roles?.includes('superAdmin')) {
-      if (!targetUser.roles?.includes('admin') && !targetUser.roles?.includes('user')) {
-        throw new UnauthorizedException('Los superAdmin solo pueden editar usuarios de tipo admin o user');
+      if (
+        !targetUser.roles?.includes('admin') &&
+        !targetUser.roles?.includes('user')
+      ) {
+        throw new UnauthorizedException(
+          'Los superAdmin solo pueden editar usuarios de tipo admin o user',
+        );
       }
     } else {
-      throw new UnauthorizedException('No tienes permisos suficientes para editar usuarios');
+      throw new UnauthorizedException(
+        'No tienes permisos suficientes para editar usuarios',
+      );
     }
 
     const asAny = updateUserDto as any;
@@ -183,18 +209,17 @@ export class UsersService {
     if (asAny.role) {
       asAny['roles'] = [asAny.role];
     }
-    
+
     const { role, ...updatePayload } = asAny;
 
-    const updatedUser = await this.userModel.findOneAndUpdate(
-      { id },
-      updatePayload,
-      { new: true }
-    ).select('-password').exec();
+    const updatedUser = await this.userModel
+      .findOneAndUpdate({ id }, updatePayload, { new: true })
+      .select('-password')
+      .exec();
 
     return {
       message: 'Usuario actualizado exitosamente',
-      user: updatedUser
+      user: updatedUser,
     };
   }
 }

@@ -8,11 +8,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { LoginUserDto } from './dto';
+import { LoginUserDto, ResetPasswordDto, RecoverPasswordDto } from './dto';
 import { ApiResponse } from 'src/common/interfaces/api-response.interface';
 import { LoginUserResponseData } from './interfaces/LoginUserResponseData';
 import { JwtPayload } from './interfaces/JwtPayload';
-import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { EmailService } from 'src/email/email.service';
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
@@ -76,7 +75,7 @@ export class AuthService {
         });
       }
     } catch (e) {
-      // Ignorar si el token no se pudo decodificar (por ejemplo, es inválido o corrupto)
+      // Ignorar
     }
 
     return { message: 'Sesión cerrada exitosamente' };
@@ -117,6 +116,24 @@ export class AuthService {
       success: true,
       message: 'Correo de recuperación enviado exitosamente. Verifica tu bandeja de entrada o spam.',
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  async resetPassword(user: User, resetPasswordDto: ResetPasswordDto, token: string) {
+    const { newPassword } = resetPasswordDto;
+    
+    // Encriptar la nueva clave
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    
+    // Actualizar clave en BD
+    await this.userModel.findOneAndUpdate({ id: user.id }, { password: hashedPassword });
+    
+    // Invalidar el token para que no se pueda volver a usar
+    await this.logout(token);
+
+    return {
+      success: true,
+      message: '¡Tu contraseña ha sido actualizada exitosamente!',
     };
   }
 }
