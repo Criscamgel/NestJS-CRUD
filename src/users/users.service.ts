@@ -15,6 +15,7 @@ import { CounterId } from 'src/common/entities/counter-id.entity';
 import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class UsersService {
@@ -26,6 +27,7 @@ export class UsersService {
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<any>,
     private readonly jwtService: JwtService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(createUserDto: CreateUserDto, creator: User) {
@@ -99,10 +101,29 @@ export class UsersService {
 
       const { password: _p, __v, _id, ...safeUser } = user.toObject();
 
+      const recoveryToken = this.jwtService.sign({ id: user.id });
+      const recoveryLink = `http://localhost:${process.env.PORT}/auth/reset-password?token=${recoveryToken}`;
+
+      const htmlBody = `
+        <h3>Bienvenido a Cheky</h3>
+        <p>Has sido registrado en la plataforma. Haz clic en el siguiente enlace para establecer tu contraseña inicial:</p>
+        <br>
+        <a href="${recoveryLink}" style="padding: 10px 15px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px;">Establecer Contraseña</a>
+        <br><br>
+        <p>Si consideras que esto es un error, puedes ignorar este correo de forma segura.</p>
+      `;
+
+      await this.emailService.sendEmail({
+        to: user.email,
+        subject: 'Bienvenido a Cheky - Establece tu contraseña',
+        htmlBody: htmlBody,
+      }).catch(e => {
+        console.error('No se pudo enviar el correo de bienvenida', e);
+      });
+
       return {
-        message: 'Usuario creado correctamente',
+        message: 'Usuario creado correctamente. Se le ha enviado un correo para configurar su contraseña.',
         data: {
-          accessToken: this.jwtService.sign({ id: user.id }),
           user: safeUser,
         },
         timestamp: new Date().toISOString(),

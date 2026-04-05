@@ -6,6 +6,7 @@ import { User, UserSchema } from './entities/user.entity';
 import { CommonModule } from '../common/common.module';
 import { AuthModule } from '../auth/auth.module';
 import { CompanyModule } from '../company/company.module';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { CompanyModule } from '../company/company.module';
       { name: User.name, schema: UserSchema }
     ]),
     CommonModule,
+    EmailModule,
     forwardRef(() => AuthModule),
     forwardRef(() => CompanyModule)
   ],
