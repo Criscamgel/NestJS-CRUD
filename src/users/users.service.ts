@@ -31,7 +31,12 @@ export class UsersService {
   ) {}
 
   async create(createUserDto: CreateUserDto, creator: User) {
-    if (creator.roles?.includes('admin')) {
+    const creatorRoles = creator.roles || [];
+    const creatorLegacyRole = (creator as any).role;
+    const isCreatorAdmin = creatorRoles.includes('admin') || creatorLegacyRole === 'admin';
+    const isCreatorSuperAdmin = creatorRoles.includes('superAdmin') || creatorLegacyRole === 'superAdmin';
+
+    if (isCreatorAdmin && !isCreatorSuperAdmin) {
       if (createUserDto.role !== 'user') {
         throw new UnauthorizedException(
           'Los admin solo pueden crear usuarios de tipo user',
@@ -55,7 +60,7 @@ export class UsersService {
           `La compañía con id ${creator.company} asociada al administrador no existe`,
         );
       }
-    } else if (creator.roles?.includes('superAdmin')) {
+    } else if (isCreatorSuperAdmin) {
       if (createUserDto.role !== 'admin' && createUserDto.role !== 'user') {
         throw new UnauthorizedException(
           'Los superAdmin solo pueden crear usuarios de tipo admin o user',
@@ -100,17 +105,19 @@ export class UsersService {
 
       createUserDto.id = counter.seq.toString();
       const { password, role, ...userData } = createUserDto;
+      
+      const temporaryPassword = password || (Math.random().toString(36).substring(2) + Date.now().toString(36) + 'A1!');
 
       const user = await this.userModel.create({
         ...userData,
         roles: [role],
-        password: bcrypt.hashSync(password, 10),
+        password: bcrypt.hashSync(String(temporaryPassword), 10),
       });
 
       const { password: _p, __v, _id, ...safeUser } = user.toObject();
 
       const recoveryToken = this.jwtService.sign({ id: user.id });
-      const recoveryLink = `http://ex${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
+      const recoveryLink = `http://${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
 
       const htmlBody = `
         <h3>Bienvenido a Cheky</h3>
@@ -179,17 +186,24 @@ export class UsersService {
       throw new NotFoundException(`Usuario con id ${id} no encontrado`);
     }
 
-    if (editor.roles?.includes('admin')) {
-      if (!targetUser.roles?.includes('user')) {
+    const targetRoles = targetUser.roles || [];
+    const targetLegacyRole = (targetUser as any).role;
+    const isTargetUser = targetRoles.includes('user') || targetLegacyRole === 'user';
+    const isTargetAdmin = targetRoles.includes('admin') || targetLegacyRole === 'admin';
+
+    const editorRoles = editor.roles || [];
+    const editorLegacyRole = (editor as any).role;
+    const isEditorAdmin = editorRoles.includes('admin') || editorLegacyRole === 'admin';
+    const isEditorSuperAdmin = editorRoles.includes('superAdmin') || editorLegacyRole === 'superAdmin';
+
+    if (isEditorAdmin && !isEditorSuperAdmin) {
+      if (!isTargetUser || isTargetAdmin) {
         throw new UnauthorizedException(
-          'Los admin solo pueden editar usuarios de tipo user',
+          `Tu usuario administrador no tiene permisos suficientes para editar a este usuario. Solo puedes editar perfiles de tipo 'user'.`,
         );
       }
-    } else if (editor.roles?.includes('superAdmin')) {
-      if (
-        !targetUser.roles?.includes('admin') &&
-        !targetUser.roles?.includes('user')
-      ) {
+    } else if (isEditorSuperAdmin) {
+      if (!isTargetAdmin && !isTargetUser) {
         throw new UnauthorizedException(
           'Los superAdmin solo pueden editar usuarios de tipo admin o user',
         );
@@ -203,7 +217,7 @@ export class UsersService {
     const asAny = updateUserDto as any;
 
     if (asAny.password) {
-      asAny.password = bcrypt.hashSync(asAny.password, 10);
+      delete asAny.password;
     }
 
     if (asAny.role) {
