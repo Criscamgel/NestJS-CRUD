@@ -224,6 +224,31 @@ export class UsersService {
       asAny['roles'] = [asAny.role];
     }
 
+    if (asAny.company) {
+      const companyId = String(asAny.company);
+      if (!/^\d+$/.test(companyId)) {
+        throw new BadRequestException(
+          'El id de la compañía no es válido, debe ser un valor entero (ej. "1", "2")',
+        );
+      }
+      const companyExists = await this.companyModel.findOne({ id: companyId });
+      if (!companyExists) {
+        throw new NotFoundException(
+          `La compañía con id ${companyId} no existe`,
+        );
+      }
+
+      if (isEditorAdmin && !isEditorSuperAdmin) {
+        if (companyId !== editor.company) {
+          throw new UnauthorizedException(
+            'Como admin, no tienes permiso para transferir usuarios a una compañía diferente a la tuya',
+          );
+        }
+      }
+      
+      asAny.company = companyId;
+    }
+
     const { role, ...updatePayload } = asAny;
 
     const updatedUser = await this.userModel
