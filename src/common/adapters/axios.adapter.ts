@@ -19,8 +19,9 @@ export class AxiosAdapter implements HttpAdapter{
         try {
             const { data } = await this.axios.post<T>(url, datum, config);
             return data;
-        } catch (error) {
-            throw new Error('This is an error - Check logs');
+        } catch (error: any) {
+            console.error('AxiosAdapter Post Error:', error?.response?.data || error);
+            throw new Error(error?.response?.data?.message || JSON.stringify(error?.response?.data) || 'This is an error - Check logs');
         }
     }
 
