@@ -1,14 +1,15 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CommonModule } from 'src/common/common.module';
 import { MongooseModule } from '@nestjs/mongoose';
-import { User, UserSchema } from './entities/user.entity';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { EmailModule } from 'src/email/email.module';
+import { UsersModule } from '../users/users.module';
+import { BlacklistedToken, BlacklistedTokenSchema } from './entities/blacklisted-token.entity';
 
 @Module({
   controllers: [AuthController],
@@ -17,10 +18,11 @@ import { EmailModule } from 'src/email/email.module';
         EmailModule,
         ConfigModule,
         CommonModule,
+        forwardRef(() => UsersModule),
         MongooseModule.forFeature([
           {
-            name: User.name,
-            schema: UserSchema
+            name: BlacklistedToken.name,
+            schema: BlacklistedTokenSchema
           }
         ]),
         PassportModule.register({ defaultStrategy: 'jwt' }),
@@ -29,13 +31,12 @@ import { EmailModule } from 'src/email/email.module';
           inject: [ ConfigService ],
           useFactory: ( configService: ConfigService ) => {
             return {
-              // secret: process.env.JWT_SECRET,
               secret: configService.get<string>('JWT_SECRET'),
               signOptions: { expiresIn: '2h' }
             }
           }
         })
       ],
-  exports: [MongooseModule, JwtStrategy, PassportModule, JwtModule]
+  exports: [MongooseModule, JwtStrategy, PassportModule, JwtModule, AuthService]
 })
 export class AuthModule {}

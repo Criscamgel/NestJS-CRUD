@@ -8,4 +8,8 @@ export class CreateCompanyDto {
   @IsString()
   @MinLength(3)
   nit!: string;
+
+  @IsString()
+  @MinLength(3)
+  city!: string;
 }

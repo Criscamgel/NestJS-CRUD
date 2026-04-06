@@ -7,7 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ValidRoles } from '../interfaces/valid-roles';
+import { ValidRoles } from '../../auth/interfaces/valid-roles';
 
 export class CreateUserDto {
   @IsOptional()
@@ -24,6 +24,7 @@ export class CreateUserDto {
   })
   document!: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(6)
   @MaxLength(50)
@@ -31,7 +32,7 @@ export class CreateUserDto {
     message:
       'The password must have a Uppercase, lowercase letter and a number',
   })
-  password!: string;
+  password?: string;
 
   @IsString()
   @MinLength(3)

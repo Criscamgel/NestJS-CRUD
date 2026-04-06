@@ -1,106 +1,31 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { User, UserSchema } from './entities/user.entity';
 import { Model } from 'mongoose';
-import { CounterId } from 'src/common/entities/counter-id.entity';
-import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
 import { JwtService } from '@nestjs/jwt';
-
 import * as bcrypt from 'bcrypt';
-import { LoginUserDto } from './dto';
+import { LoginUserDto, ResetPasswordDto, RecoverPasswordDto } from './dto';
 import { ApiResponse } from 'src/common/interfaces/api-response.interface';
 import { LoginUserResponseData } from './interfaces/LoginUserResponseData';
 import { JwtPayload } from './interfaces/JwtPayload';
-import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { EmailService } from 'src/email/email.service';
+import { BlacklistedToken } from './entities/blacklisted-token.entity';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
-    @InjectModel(CounterId.name)
-    private readonly counterIdModel: Model<any>,
+    @InjectModel(BlacklistedToken.name)
+    private readonly blacklistedTokenModel: Model<BlacklistedToken>,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
   ) {}
-
-  async create(createUserDto: CreateUserDto, creator: User) {
-    if (creator.roles?.includes('admin')) {
-      if (createUserDto.role !== 'user') {
-        throw new UnauthorizedException(
-          'Los admin solo pueden crear usuarios de tipo user',
-        );
-      }
-      // Heredar compañía del admin
-      createUserDto.company = creator.company;
-    } else if (creator.roles?.includes('superAdmin')) {
-      if (createUserDto.role !== 'admin' && createUserDto.role !== 'user') {
-        throw new UnauthorizedException(
-          'Los superAdmin solo pueden crear usuarios de tipo admin o user',
-        );
-      }
-      if (!createUserDto.company) {
-        throw new BadRequestException(
-          'Debe especificar la propiedad "company" (empresa) al crear el usuario',
-        );
-      }
-    } else {
-      throw new UnauthorizedException(
-        'No tienes permisos suficientes para crear usuarios',
-      );
-    }
-
-    try {
-      const counter = await this.counterIdModel.findByIdAndUpdate(
-        'users', // ID del contador
-        { $inc: { seq: 1 } }, // Incrementa +1
-        { new: true, upsert: true }, // Crea si no existe, devuelve nuevo valor
-      );
-
-      createUserDto.id = counter.seq.toString();
-
-      const { password, role, ...userData } = createUserDto;
-
-      const user = await this.userModel.create({
-        ...userData,
-        roles: [role],
-        password: bcrypt.hashSync(password, 10),
-      });
-
-      const { password: _p, __v, _id, ...safeUser } = user.toObject();
-
-      return {
-        message: 'Usuario creado correctamente',
-        data: {
-          accessToken: this.getJwtToken({ id: user.id }),
-          user: safeUser,
-        },
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error: unknown) {
-      if (isMongoDuplicateKeyError(error)) {
-        // normalmente viene: error.keyValue o error.keyPattern
-        const field = error?.keyValue
-          ? Object.keys(error.keyValue)[0]
-          : 'campo';
-        throw new ConflictException(`Ya existe un usuario con ese ${field}`);
-      }
-      if (error instanceof Error) {
-        throw new BadRequestException(
-          error.message ?? 'Error al crear usuario',
-        );
-      }
-      throw new BadRequestException('Error desconocido al crear usuario');
-    }
-  }
 
   private getJwtToken(payload: JwtPayload) {
     const token = this.jwtService.sign(payload);
@@ -114,7 +39,7 @@ export class AuthService {
 
     const user = await this.userModel
       .findOne({ email })
-      .select('email password id') // ← SOLO estos 3 campos
+      .select('email password id')
       .lean();
 
     if (!user) throw new UnauthorizedException('Usuario no encontrado (email)');
@@ -136,15 +61,33 @@ export class AuthService {
     };
   }
 
+  async logout(token: string) {
+    if (!token) {
+      throw new BadRequestException('Falta enviar el token a invalidar');
+    }
+
+    try {
+      const decoded: any = this.jwtService.decode(token);
+      if (decoded && decoded.exp) {
+        await this.blacklistedTokenModel.create({
+          token,
+          expiresAt: new Date(decoded.exp * 1000)
+        });
+      }
+    } catch (e) {
+      // Ignorar
+    }
+
+    return { message: 'Sesión cerrada exitosamente' };
+  }
+
   async recoverPassword(recoverPasswordDto: RecoverPasswordDto) {
     const { email } = recoverPasswordDto;
 
     const user = await this.userModel.findOne({ email }).lean();
 
     if (!user) {
-      throw new NotFoundException(
-        `No existe un usuario asociado al correo: ${email}`,
-      );
+      throw new NotFoundException(`No existe un usuario asociado al correo: ${email}`);
     }
 
     const recoveryToken = this.getJwtToken({ id: user.id });
@@ -166,16 +109,31 @@ export class AuthService {
     });
 
     if (!emailSent) {
-      throw new BadRequestException(
-        'Ha ocurrido un error interno al intentar enviar el correo. Por favor intente más tarde.',
-      );
+      throw new BadRequestException('Ha ocurrido un error interno al intentar enviar el correo. Por favor intente más tarde.');
     }
 
     return {
       success: true,
-      message:
-        'Correo de recuperación enviado exitosamente. Verifica tu bandeja de entrada o spam.',
+      message: 'Correo de recuperación enviado exitosamente. Verifica tu bandeja de entrada o spam.',
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  async resetPassword(user: User, resetPasswordDto: ResetPasswordDto, token: string) {
+    const { newPassword } = resetPasswordDto;
+    
+    // Encriptar la nueva clave
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    
+    // Actualizar clave en BD
+    await this.userModel.findOneAndUpdate({ id: user.id }, { password: hashedPassword });
+    
+    // Invalidar el token para que no se pueda volver a usar
+    await this.logout(token);
+
+    return {
+      success: true,
+      message: '¡Tu contraseña ha sido actualizada exitosamente!',
     };
   }
 }

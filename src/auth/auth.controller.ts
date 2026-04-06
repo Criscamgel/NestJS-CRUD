@@ -3,19 +3,15 @@ import {
   Get,
   Post,
   Body,
-  Patch,
-  Param,
-  Delete,
   UseGuards,
   Req,
-  SetMetadata,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto, RecoverPasswordDto } from './dto';
+import { LoginUserDto, RecoverPasswordDto, ResetPasswordDto } from './dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Auth, GetUser } from './decorators';
 import { RawHeaders, GetHeaders } from '../common/decorators';
-import { User } from './entities/user.entity';
+import { User } from '../users/entities/user.entity';
 import { UserRoleGuard } from './guards/user-role.guard';
 import { RoleProtected } from './decorators/role-protected.decorator';
 import { ValidRoles } from './interfaces';
@@ -24,23 +20,35 @@ import { ValidRoles } from './interfaces';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('register')
-  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
-  createUser(
-    @Body() createUserDto: CreateUserDto,
-    @GetUser() creatorUser: User,
-  ) {
-    return this.authService.create(createUserDto, creatorUser);
-  }
-
   @Post('login')
   loginUser(@Body() loginUserDto: LoginUserDto) {
     return this.authService.login(loginUserDto);
   }
 
+  @Post('logout')
+  @UseGuards(AuthGuard())
+  logout(@Req() request: any) {
+    // We will extract the token from headers and blacklist it
+    const authHeader = request.headers.authorization;
+    const token = authHeader.split(' ')[1];
+    return this.authService.logout(token);
+  }
+
   @Post('recover-password')
   recoverPassword(@Body() recoverPasswordDto: RecoverPasswordDto) {
     return this.authService.recoverPassword(recoverPasswordDto);
+  }
+
+  @Post('reset-password')
+  @UseGuards(AuthGuard())
+  resetPassword(
+    @GetUser() user: User,
+    @Body() resetPasswordDto: ResetPasswordDto,
+    @Req() request: any
+  ) {
+    const authHeader = request.headers.authorization;
+    const token = authHeader.split(' ')[1];
+    return this.authService.resetPassword(user, resetPasswordDto, token);
   }
 
   @Get('private')

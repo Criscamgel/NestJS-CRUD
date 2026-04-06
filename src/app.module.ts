@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { CheckModule } from './check/check.module';
 import { CompanyModule } from './company/company.module';
 import { EmailModule } from './email/email.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EmailModule } from './email/email.module';
     CheckModule,
     CompanyModule,
     EmailModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

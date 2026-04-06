@@ -33,7 +33,8 @@ export class CheckService {
 
         const data = await this.http.post<FootPrint>(process.env.REQUEST_RISKSEAL!, createCheckDto, {
           headers: {
-            'X-API-KEY': process.env.KEY_RISKSEAL!
+            'X-API-KEY': process.env.KEY_RISKSEAL!,
+            'Content-Type': 'application/json'
           }
         });
 
@@ -48,8 +49,8 @@ export class CheckService {
       }
   }
 
-  findAll() {
-    return `This action returns all check`;
+  async findAll() {
+    return this.checkModel.find().exec();
   }
 
   findOne(id: number) {

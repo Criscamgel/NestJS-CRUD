@@ -19,7 +19,7 @@ export class CreateCheckDto {
     
         @IsString()
         @MinLength(1)
-        lastname!: string;
+        lastName!: string;
     
         @IsString()
         @MinLength(1)

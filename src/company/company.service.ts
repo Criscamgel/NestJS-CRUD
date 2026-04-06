@@ -42,11 +42,11 @@ export class CompanyService {
   }
 
   async findAll() {
-    return this.companyModel.find({ isActive: true });
+    return this.companyModel.find().exec();
   }
 
   async findOne(id: string) {
-    const company = await this.companyModel.findOne({ id, isActive: true });
+    const company = await this.companyModel.findOne({ id, isActive: { $ne: false } }).exec();
     if (!company) {
       throw new NotFoundException(`Compañía con id ${id} no encontrada`);
     }
@@ -61,11 +61,15 @@ export class CompanyService {
     return company;
   }
 
-  async remove(id: string) {
-    const company = await this.companyModel.findOneAndUpdate({ id }, { isActive: false }, { new: true });
+  async toggleStatus(id: string) {
+    const company = await this.companyModel.findOne({ id });
     if (!company) {
       throw new NotFoundException(`Compañía con id ${id} no encontrada`);
     }
-    return { message: 'Compañía eliminada exitosamente' };
+    
+    company.isActive = !company.isActive;
+    await company.save();
+    
+    return { message: `Compañía ${company.isActive ? 'activada' : 'desactivada'} exitosamente` };
   }
 }

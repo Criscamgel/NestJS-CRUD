@@ -5,16 +5,14 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
 } from '@nestjs/common';
 import { CompanyService } from './company.service';
-import { CreateCompanyDto } from './dto/create-company.dto';
-import { UpdateCompanyDto } from './dto/update-company.dto';
+import { CreateCompanyDto, UpdateCompanyDto } from './dto';
 import { Auth } from 'src/auth/decorators';
 import { ValidRoles } from 'src/auth/interfaces';
 
 @Controller('company')
-@Auth(ValidRoles.superAdmin, ValidRoles.admin)
+@Auth(ValidRoles.superAdmin)
 export class CompanyController {
   constructor(private readonly companyService: CompanyService) {}
 
@@ -38,8 +36,8 @@ export class CompanyController {
     return this.companyService.update(id, updateCompanyDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.companyService.remove(id);
+  @Patch(':id/toggle-status')
+  toggleStatus(@Param('id') id: string) {
+    return this.companyService.toggleStatus(id);
   }
 }
