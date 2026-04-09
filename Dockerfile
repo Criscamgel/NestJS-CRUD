@@ -20,24 +20,16 @@ FROM node:22-alpine3.20 AS runner
 # Set working directory
 WORKDIR /usr/src/app
 
-COPY package.json yarn.lock ./
+# Copy package.json for reference (no install needed)
+COPY package.json ./
 
-RUN yarn install --prod
+# Reusar node_modules de la etapa deps (sin descarga adicional)
+COPY --from=deps /app/node_modules ./node_modules
+
+# Eliminar devDependencies localmente, sin tocar la red
+RUN npm prune --production
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public/
-
-# # Copiar el directorio y su contenido
-# RUN mkdir -p ./pokedex
-
-# COPY --from=builder ./app/dist/ ./app
-# COPY ./.env ./app/.env
-
-# # Dar permiso para ejecutar la applicación
-# RUN adduser --disabled-password pokeuser
-# RUN chown -R pokeuser:pokeuser ./pokedex
-# USER pokeuser
-
-# EXPOSE 3000
 
 CMD [ "node","dist/main" ]
