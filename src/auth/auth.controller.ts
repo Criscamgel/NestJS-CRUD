@@ -8,17 +8,17 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginUserDto, RecoverPasswordDto, ResetPasswordDto } from './dto';
-import { AuthGuard } from '@nestjs/passport';
 import { Auth, GetUser } from './decorators';
 import { RawHeaders, GetHeaders } from '../common/decorators';
 import { User } from '../users/entities/user.entity';
 import { UserRoleGuard } from './guards/user-role.guard';
 import { RoleProtected } from './decorators/role-protected.decorator';
 import { ValidRoles } from './interfaces';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('login')
   loginUser(@Body() loginUserDto: LoginUserDto) {
@@ -26,7 +26,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(AuthGuard())
+  @UseGuards(JwtAuthGuard)
   logout(@Req() request: any) {
     // We will extract the token from headers and blacklist it
     const authHeader = request.headers.authorization;
@@ -40,19 +40,12 @@ export class AuthController {
   }
 
   @Post('reset-password')
-  @UseGuards(AuthGuard())
-  resetPassword(
-    @GetUser() user: User,
-    @Body() resetPasswordDto: ResetPasswordDto,
-    @Req() request: any
-  ) {
-    const authHeader = request.headers.authorization;
-    const token = authHeader.split(' ')[1];
-    return this.authService.resetPassword(user, resetPasswordDto, token);
+  resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 
   @Get('private')
-  @UseGuards(AuthGuard())
+  @UseGuards(JwtAuthGuard)
   testingPrivateRoute(
     //@Req() request: Express.Request
     @GetUser() user: User,
@@ -69,27 +62,6 @@ export class AuthController {
         rawHeaders,
         headers,
       },
-    };
-  }
-
-  // @SetMetadata('roles', ['admin', 'super-user'])
-
-  @Get('private2')
-  @RoleProtected(ValidRoles.admin)
-  @UseGuards(AuthGuard(), UserRoleGuard)
-  privateRoute2(@GetUser() user: User) {
-    return {
-      ok: true,
-      user,
-    };
-  }
-
-  @Get('private3')
-  @Auth(ValidRoles.admin, ValidRoles.superAdmin)
-  privateRoute3(@GetUser() user: User) {
-    return {
-      ok: true,
-      user,
     };
   }
 }
