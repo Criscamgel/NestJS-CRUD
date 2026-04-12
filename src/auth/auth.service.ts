@@ -21,6 +21,7 @@ import {
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
 import { INACTIVE_ACCOUNT_MESSAGE } from './auth.constants';
+import { isUserMarkedInactive, normalizeAuthEmail } from './auth.utils';
 
 @Injectable()
 export class AuthService {
@@ -42,19 +43,22 @@ export class AuthService {
     loginUserDto: LoginUserDto,
   ): Promise<ApiResponse<LoginUserResponseData>> {
     const { password, email } = loginUserDto;
+    const emailNorm = normalizeAuthEmail(email);
 
     const user = await this.userModel
-      .findOne({ email })
+      .findOne({ email: emailNorm })
       .select('email password id isActive')
       .lean();
 
     if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
-    if (!bcrypt.compareSync(password, user.password))
-      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
-    if (user.isActive === false) {
+    // Antes de la contraseña: si la cuenta está desactivada, mensaje claro (evita confundir con credenciales incorrectas)
+    if (isUserMarkedInactive(user.isActive)) {
       throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
     }
+
+    if (!bcrypt.compareSync(password, user.password))
+      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
     return {
       success: true,
@@ -93,14 +97,15 @@ export class AuthService {
 
   async recoverPassword(recoverPasswordDto: RecoverPasswordDto) {
     const { email } = recoverPasswordDto;
+    const emailNorm = normalizeAuthEmail(email);
 
-    const user = await this.userModel.findOne({ email }).lean();
+    const user = await this.userModel.findOne({ email: emailNorm }).lean();
 
     if (!user) {
       throw new NotFoundException(`No existe un usuario asociado al correo: ${email}`);
     }
 
-    if (user.isActive === false) {
+    if (isUserMarkedInactive(user.isActive)) {
       throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
     }
 
@@ -151,7 +156,7 @@ export class AuthService {
       throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
     }
 
-    if (user.isActive === false) {
+    if (isUserMarkedInactive(user.isActive)) {
       throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
     }
 
