@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -13,6 +14,10 @@ import { ApiResponse } from 'src/common/interfaces/api-response.interface';
 import { LoginUserResponseData } from './interfaces/LoginUserResponseData';
 import { JwtPayload } from './interfaces/JwtPayload';
 import { EmailService } from 'src/email/email.service';
+import {
+  getEmailLogoAttachment,
+  recoverPasswordEmailTemplate,
+} from 'src/email/email-templates.helper';
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
 
@@ -90,22 +95,24 @@ export class AuthService {
       throw new NotFoundException(`No existe un usuario asociado al correo: ${email}`);
     }
 
-    const recoveryToken = this.getJwtToken({ id: user.id });
-    const recoveryLink = `http://localhost:${process.env.PORT}/auth/reset-password?token=${recoveryToken}`;
+    if (user.isActive === false) {
+      throw new ForbiddenException(
+        'No se puede enviar el enlace de recuperación: la cuenta asociada a este correo está desactivada. ' +
+          'Contacta a un administrador para reactivar tu usuario.',
+      );
+    }
 
-    const htmlBody = `
-      <h3>Recuperación de Contraseña</h3>
-      <p>Has solicitado recuperar tu contraseña. Haz clic en el siguiente enlace para continuar:</p>
-      <br>
-      <a href="${recoveryLink}" style="padding: 10px 15px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px;">Recuperar Contraseña</a>
-      <br><br>
-      <p>Si no has solicitado este cambio, puedes ignorar este correo de forma segura.</p>
-    `;
+    const recoveryToken = this.getJwtToken({ id: user.id });
+    const recoveryLink = `http://${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
+
+    const htmlBody = recoverPasswordEmailTemplate(recoveryLink);
+    const logoAtt = getEmailLogoAttachment();
 
     const emailSent = await this.emailService.sendEmail({
       to: email,
       subject: 'Recuperación de Contraseña - Cheky',
       htmlBody: htmlBody,
+      attachements: logoAtt ? [logoAtt] : [],
     });
 
     if (!emailSent) {
@@ -140,6 +147,13 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+    }
+
+    if (user.isActive === false) {
+      throw new ForbiddenException(
+        'No puedes restablecer la contraseña porque tu cuenta está desactivada. ' +
+          'Si necesitas volver a acceder, pide a un administrador que reactive tu usuario.',
+      );
     }
 
     // Encriptar la nueva clave

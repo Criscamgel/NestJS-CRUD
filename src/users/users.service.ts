@@ -16,6 +16,10 @@ import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from 'src/email/email.service';
+import {
+  getEmailLogoAttachment,
+  welcomeEmailTemplate,
+} from 'src/email/email-templates.helper';
 
 @Injectable()
 export class UsersService {
@@ -118,21 +122,17 @@ export class UsersService {
 
       const recoveryToken = this.jwtService.sign({ id: user.id });
       const recoveryLink = `http://${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
+      const userName = user.name || user.email;
 
-      const htmlBody = `
-        <h3>Bienvenido a Cheky</h3>
-        <p>Has sido registrado en la plataforma. Haz clic en el siguiente enlace para establecer tu contraseña inicial:</p>
-        <br>
-        <a href="${recoveryLink}" style="padding: 10px 15px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px;">Establecer Contraseña</a>
-        <br><br>
-        <p>Si consideras que esto es un error, puedes ignorar este correo de forma segura.</p>
-      `;
+      const htmlBody = welcomeEmailTemplate(userName, recoveryLink);
+      const logoAtt = getEmailLogoAttachment();
 
       await this.emailService
         .sendEmail({
           to: user.email,
           subject: 'Bienvenido a Cheky - Establece tu contraseña',
           htmlBody: htmlBody,
+          attachements: logoAtt ? [logoAtt] : [],
         })
         .catch((e) => {
           console.error('No se pudo enviar el correo de bienvenida', e);

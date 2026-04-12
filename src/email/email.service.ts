@@ -12,6 +12,8 @@ export interface SendMailOptions {
 export interface Attachement {
   filename: string;
   path: string;
+  /** Inline image: use same value in HTML as <img src="cid:..."> */
+  cid?: string;
 }
 
 @Injectable()
