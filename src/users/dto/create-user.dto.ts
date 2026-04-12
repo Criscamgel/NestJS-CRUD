@@ -8,6 +8,14 @@ import {
   MinLength,
 } from 'class-validator';
 import { ValidRoles } from '../../auth/interfaces/valid-roles';
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH_MESSAGE,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_MIN_LENGTH_MESSAGE,
+  PASSWORD_STRENGTH_REGEX,
+} from 'src/common/validators/password-policy';
 
 export class CreateUserDto {
   @IsOptional()
@@ -26,12 +34,9 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(6)
-  @MaxLength(50)
-  @Matches(/(?:(?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
-    message:
-      'The password must have a Uppercase, lowercase letter and a number',
-  })
+  @MinLength(PASSWORD_MIN_LENGTH, { message: PASSWORD_MIN_LENGTH_MESSAGE })
+  @MaxLength(PASSWORD_MAX_LENGTH, { message: PASSWORD_MAX_LENGTH_MESSAGE })
+  @Matches(PASSWORD_STRENGTH_REGEX, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password?: string;
 
   @IsString()

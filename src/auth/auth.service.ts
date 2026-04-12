@@ -97,8 +97,7 @@ export class AuthService {
 
     if (user.isActive === false) {
       throw new ForbiddenException(
-        'No se puede enviar el enlace de recuperación: la cuenta asociada a este correo está desactivada. ' +
-          'Contacta a un administrador para reactivar tu usuario.',
+        'Cuenta inactiva. Un administrador debe reactivarla.',
       );
     }
 
@@ -151,8 +150,7 @@ export class AuthService {
 
     if (user.isActive === false) {
       throw new ForbiddenException(
-        'No puedes restablecer la contraseña porque tu cuenta está desactivada. ' +
-          'Si necesitas volver a acceder, pide a un administrador que reactive tu usuario.',
+        'Cuenta inactiva. Un administrador debe reactivarla.',
       );
     }
 
