@@ -20,6 +20,7 @@ import {
 } from 'src/email/email-templates.helper';
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
+import { INACTIVE_ACCOUNT_MESSAGE } from './auth.constants';
 
 @Injectable()
 export class AuthService {
@@ -44,12 +45,16 @@ export class AuthService {
 
     const user = await this.userModel
       .findOne({ email })
-      .select('email password id')
+      .select('email password id isActive')
       .lean();
 
     if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
     if (!bcrypt.compareSync(password, user.password))
       throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+
+    if (user.isActive === false) {
+      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+    }
 
     return {
       success: true,
@@ -96,9 +101,7 @@ export class AuthService {
     }
 
     if (user.isActive === false) {
-      throw new ForbiddenException(
-        'Cuenta inactiva. Un administrador debe reactivarla.',
-      );
+      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
     }
 
     const recoveryToken = this.getJwtToken({ id: user.id });
@@ -149,9 +152,7 @@ export class AuthService {
     }
 
     if (user.isActive === false) {
-      throw new ForbiddenException(
-        'Cuenta inactiva. Un administrador debe reactivarla.',
-      );
+      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
     }
 
     // Encriptar la nueva clave
