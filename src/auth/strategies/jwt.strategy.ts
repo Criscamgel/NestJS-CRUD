@@ -32,15 +32,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         if (token) {
             const isBlacklisted = await this.blacklistedTokenModel.findOne({ token });
             if (isBlacklisted) {
-                throw new UnauthorizedException('Su sesión ha expirado o ha sido cerrada');
+                throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
             }
         }
 
         const { id } = payload;
         const user = await this.userModel.findOne({ id });
 
-        if (!user) throw new UnauthorizedException('Token no válido');
-        if (!user.isActive) throw new UnauthorizedException('Usuario inactivo, comuniquese con el administrador');
+        if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+        if (!user.isActive) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
         return user;
     }

@@ -29,7 +29,7 @@ export class UserRoleGuard implements CanActivate {
       }
     }
 
-    throw new ForbiddenException(`El usuario ${user.fullName} no tiene el rol necesario para acceder a este recurso`);
+    throw new ForbiddenException('No tiene los permisos suficientes para acceder a este recurso');
 
   }
 }

@@ -42,9 +42,9 @@ export class AuthService {
       .select('email password id')
       .lean();
 
-    if (!user) throw new UnauthorizedException('Usuario no encontrado (email)');
+    if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
     if (!bcrypt.compareSync(password, user.password))
-      throw new UnauthorizedException('Contraseña invalida o incorrecta');
+      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
     return {
       success: true,
@@ -119,11 +119,31 @@ export class AuthService {
     };
   }
 
-  async resetPassword(user: User, resetPasswordDto: ResetPasswordDto, token: string) {
-    const { newPassword } = resetPasswordDto;
-    
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const { password, token } = resetPasswordDto;
+
+    // Verificar en la blacklist primero
+    const isBlacklisted = await this.blacklistedTokenModel.findOne({ token });
+    if (isBlacklisted) {
+      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+    }
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token);
+    } catch (error) {
+      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+    }
+
+    const userId = decoded.id;
+    const user = await this.userModel.findOne({ id: userId });
+
+    if (!user) {
+      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+    }
+
     // Encriptar la nueva clave
-    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    const hashedPassword = bcrypt.hashSync(password, 10);
     
     // Actualizar clave en BD
     await this.userModel.findOneAndUpdate({ id: user.id }, { password: hashedPassword });
@@ -137,3 +157,4 @@ export class AuthService {
     };
   }
 }
+
