@@ -1,35 +1,37 @@
-# Install dependencies only when needed
+# 1. Instalar todas las dependencias (incluye devDeps para compilar)
 FROM node:22-alpine3.20 AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 
-# Build the app with cache dependencies
+# 2. Compilar la aplicación
 FROM node:22-alpine3.20 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN yarn build
 
+# 3. Instalar SOLO dependencias de producción (Esta es la clave)
+FROM node:22-alpine3.20 AS prod-deps
+WORKDIR /app
+COPY package.json yarn.lock ./
+RUN yarn install --production --frozen-lockfile
 
-# Production image, copy all the files and run next
+# 4. Imagen final (Runner)
 FROM node:22-alpine3.20 AS runner
-
-# Set working directory
 WORKDIR /usr/src/app
 
-# Copy package.json for reference (no install needed)
-COPY package.json ./
+ENV NODE_ENV=production
 
-# Reusar node_modules de la etapa deps (sin descarga adicional)
-COPY --from=deps /app/node_modules ./node_modules
-
-# Eliminar devDependencies localmente, sin tocar la red
-RUN npm prune --production
-
+# Copiamos solo lo necesario para ejecutar
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./package.json
+
+# Si usas archivos estáticos en public, descomenta la siguiente línea
 COPY --from=builder /app/public ./public/
 
-CMD [ "node","dist/main" ]
+EXPOSE 3000
+
+CMD [ "node", "dist/main" ]
