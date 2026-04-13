@@ -166,7 +166,24 @@ export class UsersService {
     return this.userModel.find().select('-password').exec();
   }
 
-  async findOneById(id: string) {
+  async findOneById(id: string, requester: User) {
+    const requesterRoles = requester.roles || [];
+    const requesterLegacyRole = (requester as any).role;
+    const isSuperAdmin =
+      requesterRoles.includes('superAdmin') || requesterLegacyRole === 'superAdmin';
+    const isAdmin =
+      requesterRoles.includes('admin') || requesterLegacyRole === 'admin';
+    const isPlainUser =
+      requesterRoles.includes('user') || requesterLegacyRole === 'user';
+
+    if (isPlainUser && !isAdmin && !isSuperAdmin) {
+      if (id !== requester.id) {
+        throw new UnauthorizedException(
+          'Solo puedes consultar la información de tu propio usuario',
+        );
+      }
+    }
+
     const user = await this.userModel
       .findOne({ id })
       .select('-password')
