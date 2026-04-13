@@ -1,10 +1,20 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+} from '@nestjs/common';
 import { CheckService } from './check.service';
 import { CreateCheckDto } from './dto/create-check.dto';
 import { UpdateCheckDto } from './dto/update-check.dto';
 import { Auth } from 'src/auth/decorators';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 
-@Controller('check')
+@Controller(['check', 'checks'])
 @Auth()
 export class CheckController {
   constructor(private readonly checkService: CheckService) { }
@@ -15,8 +25,8 @@ export class CheckController {
   }
 
   @Get()
-  findAll() {
-    return this.checkService.findAll();
+  findAll(@Query() paginationQuery: PaginationQueryDto) {
+    return this.checkService.findAll(paginationQuery);
   }
 
   @Get(':id')

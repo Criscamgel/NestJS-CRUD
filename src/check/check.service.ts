@@ -7,6 +7,12 @@ import { AxiosAdapter } from 'src/common/adapters/axios.adapter';
 import { FootPrint } from './interfaces/footPrint.interface';
 import { InjectModel } from '@nestjs/mongoose';
 import { CounterId } from 'src/common/entities/counter-id.entity';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
+import {
+  buildPaginationMeta,
+  resolvePagination,
+} from 'src/common/utils/pagination';
+import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 
 @Injectable()
 export class CheckService {
@@ -49,8 +55,22 @@ export class CheckService {
       }
   }
 
-  async findAll() {
-    return this.checkModel.find().exec();
+  async findAll(paginationQuery: PaginationQueryDto) {
+    const { page, limit, skip } = resolvePagination(paginationQuery);
+    const filter = buildRegexOrFilter<Check>(paginationQuery.search, [
+      'name',
+      'lastName',
+      'email',
+      'mobile',
+    ]);
+    const [data, total] = await Promise.all([
+      this.checkModel.find(filter).skip(skip).limit(limit).exec(),
+      this.checkModel.countDocuments(filter),
+    ]);
+    return {
+      data,
+      meta: buildPaginationMeta(total, page, limit),
+    };
   }
 
   findOne(id: number) {

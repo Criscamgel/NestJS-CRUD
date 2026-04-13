@@ -6,6 +6,12 @@ import { Model } from 'mongoose';
 import { Company } from './entities/company.entity';
 import { CounterId } from 'src/common/entities/counter-id.entity';
 import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
+import {
+  buildPaginationMeta,
+  resolvePagination,
+} from 'src/common/utils/pagination';
+import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 
 @Injectable()
 export class CompanyService {
@@ -41,8 +47,20 @@ export class CompanyService {
     }
   }
 
-  async findAll() {
-    return this.companyModel.find().exec();
+  async findAll(paginationQuery: PaginationQueryDto) {
+    const { page, limit, skip } = resolvePagination(paginationQuery);
+    const filter = buildRegexOrFilter<Company>(paginationQuery.search, [
+      'name',
+      'nit',
+    ]);
+    const [data, total] = await Promise.all([
+      this.companyModel.find(filter).skip(skip).limit(limit).exec(),
+      this.companyModel.countDocuments(filter),
+    ]);
+    return {
+      data,
+      meta: buildPaginationMeta(total, page, limit),
+    };
   }
 
   async findOne(id: string) {
