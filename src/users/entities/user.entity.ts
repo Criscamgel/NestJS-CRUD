@@ -60,6 +60,10 @@ export class User extends Document {
     })
     isActive!: boolean;
 
+    /** Último inicio de sesión exitoso */
+    @Prop()
+    lastAccessAt?: Date;
+
     get fullName(): string {
         return `${this.name} ${this.lastName}`;
     }

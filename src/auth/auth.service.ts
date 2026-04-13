@@ -20,6 +20,7 @@ import {
 } from 'src/email/email-templates.helper';
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
+import { PublicUser } from '../users/interfaces/public-user.interface';
 import { INACTIVE_ACCOUNT_MESSAGE } from './auth.constants';
 import { isUserMarkedInactive, normalizeAuthEmail } from './auth.utils';
 
@@ -60,16 +61,41 @@ export class AuthService {
     if (!bcrypt.compareSync(password, user.password))
       throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
+    const lastAccessAt = new Date();
+    const updatedUser = await this.userModel
+      .findOneAndUpdate(
+        { id: user.id },
+        { $set: { lastAccessAt } },
+        { new: true },
+      )
+      .select('-password')
+      .lean()
+      .exec();
+
+    if (!updatedUser) {
+      throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+    }
+
+    const userPayload: PublicUser = {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      name: updatedUser.name,
+      lastName: updatedUser.lastName,
+      document: updatedUser.document,
+      roles: updatedUser.roles,
+      company: updatedUser.company,
+      isActive: updatedUser.isActive,
+      lastAccessAt: updatedUser.lastAccessAt
+        ? new Date(updatedUser.lastAccessAt).toISOString()
+        : undefined,
+    };
+
     return {
       success: true,
       message: 'Bienvenido a Cheky!!!',
       data: {
         accessToken: this.getJwtToken({ id: user.id }),
-        user: {
-          id: user.id,
-          email: user.email,
-          password: user.password,
-        },
+        user: userPayload,
       },
       timestamp: new Date().toISOString(),
     };
