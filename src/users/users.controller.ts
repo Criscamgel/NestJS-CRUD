@@ -26,9 +26,9 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
-  findOneUser(@Param('id') id: string) {
-    return this.usersService.findOneById(id);
+  @Auth(ValidRoles.superAdmin, ValidRoles.admin, ValidRoles.user)
+  findOneUser(@Param('id') id: string, @GetUser() requester: User) {
+    return this.usersService.findOneById(id, requester);
   }
 
   @Patch(':id/toggle-status')
