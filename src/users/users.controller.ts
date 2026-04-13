@@ -25,6 +25,12 @@ export class UsersController {
     return this.usersService.findAllUsers();
   }
 
+  @Get(':id')
+  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
+  findOneUser(@Param('id') id: string) {
+    return this.usersService.findOneById(id);
+  }
+
   @Patch(':id/toggle-status')
   @Auth(ValidRoles.superAdmin, ValidRoles.admin)
   toggleUserStatus(@Param('id') id: string) {

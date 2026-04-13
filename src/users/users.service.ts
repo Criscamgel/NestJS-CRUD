@@ -166,6 +166,17 @@ export class UsersService {
     return this.userModel.find().select('-password').exec();
   }
 
+  async findOneById(id: string) {
+    const user = await this.userModel
+      .findOne({ id })
+      .select('-password')
+      .exec();
+    if (!user) {
+      throw new NotFoundException(`Usuario con id ${id} no encontrado`);
+    }
+    return user;
+  }
+
   async toggleUserStatus(id: string) {
     const user = await this.userModel.findOne({ id });
     if (!user) {
