@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { CreateCheckDto } from './dto/create-check.dto';
 import { UpdateCheckDto } from './dto/update-check.dto';
 import { Model } from 'mongoose';
@@ -13,6 +18,8 @@ import {
   resolvePagination,
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
+import { MembershipsService } from 'src/memberships/memberships.service';
+import { User } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class CheckService {
@@ -22,10 +29,26 @@ export class CheckService {
     private readonly checkModel: Model<Check>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<any>,
-    private readonly http: AxiosAdapter
+    private readonly http: AxiosAdapter,
+    private readonly membershipsService: MembershipsService,
   ){}
   
-  async create(createCheckDto: CreateCheckDto) {
+  async create(createCheckDto: CreateCheckDto, actor: User) {
+      const actorRoles = actor.roles || [];
+      const actorLegacy = (actor as { role?: string }).role;
+      const isSuperAdmin =
+        actorRoles.includes('superAdmin') || actorLegacy === 'superAdmin';
+
+      if (!isSuperAdmin) {
+        if (!actor.company) {
+          throw new BadRequestException(
+            'Tu usuario debe estar asociado a una compañía para crear checks.',
+          );
+        }
+        await this.membershipsService.syncMonthForCompany(actor.company);
+        await this.membershipsService.assertCheckLimits(actor.company);
+      }
+
       try {
 
         const counter = await this.counterIdModel.findByIdAndUpdate(
@@ -45,13 +68,26 @@ export class CheckService {
         });
 
         const check = await this.checkModel.create( createCheckDto );
+
+        if (!isSuperAdmin && actor.company) {
+          try {
+            await this.membershipsService.incrementCheckUsage(actor.company);
+          } catch (quotaErr) {
+            await this.checkModel.deleteOne({ _id: check._id });
+            throw quotaErr;
+          }
+        }
+
         return {
           message: 'Check creado exitosamente',
           data: { check, data } 
         };
 
       } catch (error) {
-       throw new BadRequestException(`Error externo: ${error}`); 
+        if (error instanceof HttpException) {
+          throw error;
+        }
+        throw new BadRequestException(`Error externo: ${error}`);
       }
   }
 

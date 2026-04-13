@@ -27,6 +27,8 @@ import {
   resolvePagination,
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
+import { MembershipsService } from 'src/memberships/memberships.service';
+import { ValidRoles } from 'src/auth/interfaces';
 
 @Injectable()
 export class UsersService {
@@ -39,6 +41,7 @@ export class UsersService {
     private readonly counterIdModel: Model<any>,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   async create(createUserDto: CreateUserDto, creator: User) {
@@ -108,6 +111,12 @@ export class UsersService {
     }
 
     try {
+      if (createUserDto.role === ValidRoles.user && createUserDto.company) {
+        await this.membershipsService.assertCanAddNormalUser(
+          String(createUserDto.company),
+        );
+      }
+
       const counter = await this.counterIdModel.findByIdAndUpdate(
         'users',
         { $inc: { seq: 1 } },

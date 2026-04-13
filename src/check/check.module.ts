@@ -6,6 +6,7 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CommonModule } from 'src/common/common.module';
 import { AuthModule } from 'src/auth/auth.module';
+import { MembershipsModule } from 'src/memberships/memberships.module';
 
 @Module({
   controllers: [CheckController],
@@ -14,6 +15,7 @@ import { AuthModule } from 'src/auth/auth.module';
     ConfigModule,
     CommonModule,
     AuthModule,
+    MembershipsModule,
     MongooseModule.forFeature([
       {
         name: Check.name,
