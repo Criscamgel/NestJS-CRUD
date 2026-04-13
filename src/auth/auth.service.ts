@@ -22,7 +22,11 @@ import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
 import { PublicUser } from '../users/interfaces/public-user.interface';
 import { INACTIVE_ACCOUNT_MESSAGE } from './auth.constants';
-import { isUserMarkedInactive, normalizeAuthEmail } from './auth.utils';
+import {
+  getFrontendBaseUrl,
+  isUserMarkedInactive,
+  normalizeAuthEmail,
+} from './auth.utils';
 
 @Injectable()
 export class AuthService {
@@ -136,7 +140,7 @@ export class AuthService {
     }
 
     const recoveryToken = this.getJwtToken({ id: user.id });
-    const recoveryLink = `http://${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
+    const recoveryLink = `${getFrontendBaseUrl()}/auth/reset-password?token=${recoveryToken}`;
 
     const htmlBody = recoverPasswordEmailTemplate(recoveryLink);
     const logoAtt = getEmailLogoAttachment();
