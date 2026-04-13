@@ -18,6 +18,9 @@ export class Company extends Document {
   @Prop({ required: true })
   city!: string;
 
+  @Prop()
+  sector?: string;
+
   @Prop({ default: true })
   isActive!: boolean;
 }

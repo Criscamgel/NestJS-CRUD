@@ -12,4 +12,8 @@ export class CreateCompanyDto {
   @IsString()
   @MinLength(3)
   city!: string;
+
+  @IsString()
+  @MinLength(3)
+  sector!: string;
 }
