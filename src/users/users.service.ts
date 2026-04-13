@@ -20,6 +20,12 @@ import {
   getEmailLogoAttachment,
   welcomeEmailTemplate,
 } from 'src/email/email-templates.helper';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
+import {
+  buildPaginationMeta,
+  resolvePagination,
+} from 'src/common/utils/pagination';
+import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 
 @Injectable()
 export class UsersService {
@@ -162,8 +168,26 @@ export class UsersService {
     }
   }
 
-  async findAllUsers() {
-    return this.userModel.find().select('-password').exec();
+  async findAllUsers(paginationQuery: PaginationQueryDto) {
+    const { page, limit, skip } = resolvePagination(paginationQuery);
+    const filter = buildRegexOrFilter<User>(paginationQuery.search, [
+      'name',
+      'lastName',
+      'document',
+    ]);
+    const [data, total] = await Promise.all([
+      this.userModel
+        .find(filter)
+        .select('-password')
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.userModel.countDocuments(filter),
+    ]);
+    return {
+      data,
+      meta: buildPaginationMeta(total, page, limit),
+    };
   }
 
   async findOneById(id: string, requester: User) {
