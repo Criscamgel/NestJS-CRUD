@@ -13,6 +13,7 @@ import { Company } from '../company/entities/company.entity';
 import { Model } from 'mongoose';
 import { CounterId } from 'src/common/entities/counter-id.entity';
 import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
+import { getFrontendBaseUrl } from 'src/auth/auth.utils';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from 'src/email/email.service';
@@ -127,7 +128,7 @@ export class UsersService {
       const { password: _p, __v, _id, ...safeUser } = user.toObject();
 
       const recoveryToken = this.jwtService.sign({ id: user.id });
-      const recoveryLink = `http://${process.env.FRONTEND_PATH}/auth/reset-password?token=${recoveryToken}`;
+      const recoveryLink = `${getFrontendBaseUrl()}/auth/reset-password?token=${recoveryToken}`;
       const userName = user.name || user.email;
 
       const htmlBody = welcomeEmailTemplate(userName, recoveryLink);
