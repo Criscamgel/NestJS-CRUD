@@ -7,6 +7,7 @@ import { CommonModule } from '../common/common.module';
 import { AuthModule } from '../auth/auth.module';
 import { CompanyModule } from '../company/company.module';
 import { EmailModule } from 'src/email/email.module';
+import { MembershipsModule } from 'src/memberships/memberships.module';
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { EmailModule } from 'src/email/email.module';
     CommonModule,
     EmailModule,
     forwardRef(() => AuthModule),
-    forwardRef(() => CompanyModule)
+    forwardRef(() => CompanyModule),
+    forwardRef(() => MembershipsModule),
   ],
   controllers: [UsersController],
   providers: [UsersService],

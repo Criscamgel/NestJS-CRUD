@@ -14,6 +14,8 @@ import { CheckModule } from './check/check.module';
 import { CompanyModule } from './company/company.module';
 import { EmailModule } from './email/email.module';
 import { UsersModule } from './users/users.module';
+import { PlansModule } from './plans/plans.module';
+import { MembershipsModule } from './memberships/memberships.module';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { UsersModule } from './users/users.module';
     CompanyModule,
     EmailModule,
     UsersModule,
+    PlansModule,
+    MembershipsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
