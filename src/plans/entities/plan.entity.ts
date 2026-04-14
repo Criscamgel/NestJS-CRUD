@@ -29,6 +29,10 @@ export class Plan extends Document {
 
   @Prop({ default: true })
   isActive!: boolean;
+
+  /** Visible en catálogo público de planes (independiente de isActive). */
+  @Prop({ default: true })
+  isVisible!: boolean;
 }
 
 export const PlanSchema = SchemaFactory.createForClass(Plan);
