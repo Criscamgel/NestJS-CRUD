@@ -42,4 +42,9 @@ export class PlansController {
   toggleStatus(@Param('id') id: string) {
     return this.plansService.toggleStatus(id);
   }
+
+  @Patch(':id/toggle-visibility')
+  toggleVisibility(@Param('id') id: string) {
+    return this.plansService.toggleVisibility(id);
+  }
 }

@@ -41,6 +41,7 @@ export class PlansService {
         durationMonths: dto.durationMonths,
         monthlyPrice: dto.monthlyPrice,
         currency: dto.currency ?? 'COP',
+        isVisible: dto.isVisible ?? true,
       });
       return {
         message: 'Plan creado exitosamente',
@@ -87,6 +88,7 @@ export class PlansService {
     if (dto.durationMonths !== undefined) payload.durationMonths = dto.durationMonths;
     if (dto.monthlyPrice !== undefined) payload.monthlyPrice = dto.monthlyPrice;
     if (dto.currency !== undefined) payload.currency = dto.currency;
+    if (dto.isVisible !== undefined) payload.isVisible = dto.isVisible;
 
     try {
       const updated = await this.planModel
@@ -110,6 +112,20 @@ export class PlansService {
     await plan.save();
     return {
       message: `Plan ${plan.isActive ? 'activado' : 'desactivado'} exitosamente`,
+      plan: this.toPublicPlan(plan),
+    };
+  }
+
+  async toggleVisibility(id: string) {
+    const plan = await this.planModel.findOne({ id });
+    if (!plan) {
+      throw new NotFoundException(`Plan con id ${id} no encontrado`);
+    }
+    plan.isVisible = !plan.isVisible;
+    await plan.save();
+    return {
+      message: `Plan ${plan.isVisible ? 'visible en el catálogo' : 'oculto del catálogo'}`,
+      plan: this.toPublicPlan(plan),
     };
   }
 
@@ -122,9 +138,12 @@ export class PlansService {
     const o = { ...(plan.toObject() as Record<string, unknown>) };
     const maxChecksPerMonth = o.maxChecksPerMonth;
     delete o.maxChecksPerMonth;
+    const isVisible =
+      o.isVisible === undefined ? true : Boolean(o.isVisible);
     return {
       ...o,
       maxChecks: maxChecksPerMonth,
+      isVisible,
     };
   }
 }

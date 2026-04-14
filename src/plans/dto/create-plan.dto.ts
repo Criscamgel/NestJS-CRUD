@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsInt,
   IsPositive,
   IsString,
@@ -40,4 +41,9 @@ export class CreatePlanDto {
   @IsString()
   @MinLength(3)
   currency?: string;
+
+  /** Mostrar en el catálogo de planes (por defecto true en entidad). */
+  @IsOptional()
+  @IsBoolean()
+  isVisible?: boolean;
 }
