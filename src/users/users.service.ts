@@ -178,13 +178,40 @@ export class UsersService {
     }
   }
 
-  async findAllUsers(paginationQuery: PaginationQueryDto) {
+  async findAllUsers(paginationQuery: PaginationQueryDto, requester: User) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
-    const filter = buildRegexOrFilter<User>(paginationQuery.search, [
+    const requesterRoles = requester.roles || [];
+    const requesterLegacyRole = (requester as any).role;
+    const isSuperAdmin =
+      requesterRoles.includes('superAdmin') || requesterLegacyRole === 'superAdmin';
+    const isAdmin =
+      requesterRoles.includes('admin') || requesterLegacyRole === 'admin';
+
+    const searchFilter = buildRegexOrFilter<User>(paginationQuery.search, [
       'name',
       'lastName',
       'document',
     ]);
+
+    /** Admin de empresa: solo usuarios `user` de su misma compañía. */
+    const companyScopeFilter: Record<string, unknown> =
+      isAdmin && !isSuperAdmin && requester.company
+        ? {
+            company: requester.company,
+            roles: { $in: ['user'] },
+          }
+        : {};
+
+    let filter: Record<string, unknown> = {};
+    if (
+      Object.keys(searchFilter).length > 0 &&
+      Object.keys(companyScopeFilter).length > 0
+    ) {
+      filter = { $and: [searchFilter, companyScopeFilter] };
+    } else {
+      filter = { ...searchFilter, ...companyScopeFilter };
+    }
+
     const [data, total] = await Promise.all([
       this.userModel
         .find(filter)
@@ -225,13 +252,47 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`Usuario con id ${id} no encontrado`);
     }
+
+    if (isAdmin && !isSuperAdmin) {
+      if (!requester.company || user.company !== requester.company) {
+        throw new UnauthorizedException(
+          'No puedes ver usuarios de otra compañía',
+        );
+      }
+    }
+
     return user;
   }
 
-  async toggleUserStatus(id: string) {
+  async toggleUserStatus(id: string, requester: User) {
     const user = await this.userModel.findOne({ id });
     if (!user) {
       throw new NotFoundException(`Usuario con id ${id} no encontrado`);
+    }
+
+    const requesterRoles = requester.roles || [];
+    const requesterLegacyRole = (requester as any).role;
+    const isSuperAdmin =
+      requesterRoles.includes('superAdmin') || requesterLegacyRole === 'superAdmin';
+    const isAdmin =
+      requesterRoles.includes('admin') || requesterLegacyRole === 'admin';
+
+    const targetRoles = user.roles || [];
+    const targetLegacyRole = (user as any).role;
+    const isTargetUser =
+      targetRoles.includes('user') || targetLegacyRole === 'user';
+
+    if (isAdmin && !isSuperAdmin) {
+      if (!requester.company || user.company !== requester.company) {
+        throw new UnauthorizedException(
+          'No puedes cambiar el estado de usuarios de otra compañía',
+        );
+      }
+      if (!isTargetUser) {
+        throw new UnauthorizedException(
+          'Solo puedes activar o desactivar usuarios con rol user',
+        );
+      }
     }
 
     user.isActive = !user.isActive;
@@ -259,6 +320,11 @@ export class UsersService {
     const isEditorSuperAdmin = editorRoles.includes('superAdmin') || editorLegacyRole === 'superAdmin';
 
     if (isEditorAdmin && !isEditorSuperAdmin) {
+      if (!editor.company || targetUser.company !== editor.company) {
+        throw new UnauthorizedException(
+          'No puedes editar usuarios de otra compañía',
+        );
+      }
       if (!isTargetUser || isTargetAdmin) {
         throw new UnauthorizedException(
           `Tu usuario administrador no tiene permisos suficientes para editar a este usuario. Solo puedes editar perfiles de tipo 'user'.`,
@@ -280,6 +346,12 @@ export class UsersService {
 
     if (asAny.password) {
       delete asAny.password;
+    }
+
+    if (isEditorAdmin && !isEditorSuperAdmin && asAny.role && asAny.role !== 'user') {
+      throw new UnauthorizedException(
+        'Como administrador de empresa solo puedes mantener el rol user',
+      );
     }
 
     if (asAny.role) {
