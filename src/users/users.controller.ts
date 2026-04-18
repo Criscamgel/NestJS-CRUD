@@ -30,8 +30,11 @@ export class UsersController {
 
   @Get()
   @Auth(ValidRoles.superAdmin, ValidRoles.admin)
-  findAllUsers(@Query() paginationQuery: PaginationQueryDto) {
-    return this.usersService.findAllUsers(paginationQuery);
+  findAllUsers(
+    @Query() paginationQuery: PaginationQueryDto,
+    @GetUser() requester: User,
+  ) {
+    return this.usersService.findAllUsers(paginationQuery, requester);
   }
 
   @Get(':id')
@@ -42,8 +45,8 @@ export class UsersController {
 
   @Patch(':id/toggle-status')
   @Auth(ValidRoles.superAdmin, ValidRoles.admin)
-  toggleUserStatus(@Param('id') id: string) {
-    return this.usersService.toggleUserStatus(id);
+  toggleUserStatus(@Param('id') id: string, @GetUser() requester: User) {
+    return this.usersService.toggleUserStatus(id, requester);
   }
 
   @Patch(':id')
