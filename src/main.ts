@@ -12,13 +12,10 @@ function normalizeOrigin(o: string): string {
 }
 
 /**
- * Orígenes permitidos para CORS (navegador).
- * - Incluye `CORS_ORIGINS`, `FRONTEND_URL` y `FRONTEND_PATH` (coma).
- * - Se unen defaults (Cheky + Vite local).
+ * Orígenes permitidos: **siempre** se unen defaults (app + landing + local) con lo que venga en env.
+ * Así añadir `cheky.co` en `CORS_ORIGINS` no puede quitar `app.cheky.co` por error.
  *
- * Importante: el paquete `cors` (Express) **no soporta bien** `allowedHeaders: '*'`;
- * eso puede hacer fallar el preflight OPTIONS y el navegador reporta “sin
- * Access-Control-Allow-Origin” aunque el backend esté vivo.
+ * - `CORS_ORIGINS`, `FRONTEND_URL`, `FRONTEND_PATH`: lista separada por comas.
  */
 function buildCorsAllowedOrigins(): string[] {
   const raw = [
@@ -28,6 +25,7 @@ function buildCorsAllowedOrigins(): string[] {
   ]
     .filter(Boolean)
     .join(',');
+
   const fromEnv = raw
     .split(',')
     .map((s) => normalizeOrigin(s))
@@ -36,10 +34,10 @@ function buildCorsAllowedOrigins(): string[] {
   const defaults = [
     'https://cheky.co',
     'https://www.cheky.co',
-    'http://cheky.co',
-    'http://www.cheky.co',
     'https://app.cheky.co',
     'https://www.app.cheky.co',
+    'http://cheky.co',
+    'http://www.cheky.co',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
   ];
@@ -47,17 +45,36 @@ function buildCorsAllowedOrigins(): string[] {
   return [...new Set([...defaults.map(normalizeOrigin), ...fromEnv])];
 }
 
+function buildCorsOriginFn(allowed: string[]) {
+  return (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void,
+  ) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+    const n = normalizeOrigin(origin);
+    if (allowed.includes(n)) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  };
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const origins = buildCorsAllowedOrigins();
-  logger.log(`CORS origins (${origins.length}): ${origins.join(' | ')}`);
+  const allowedOrigins = buildCorsAllowedOrigins();
+  logger.log(`CORS (${allowedOrigins.length} origins): ${allowedOrigins.join(', ')}`);
 
+  /**
+   * Misma línea que antes de los intentos con `allowedHeaders: '*'` y `credentials: false`:
+   * - `credentials: true` como en el backend original (login / cookies si los usas).
+   * - Lista fija de cabeceras (no `*`, que en muchos entornos rompe el preflight OPTIONS).
+   */
   app.enableCors({
-    /** Lista explícita — formato recomendado por `cors` (mejor que callback salvo reglas dinámicas). */
-    origin: origins,
+    origin: buildCorsOriginFn(allowedOrigins),
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    /** Lista explícita; NO usar `*` aquí (rompe preflight en muchas versiones de `cors`). */
     allowedHeaders: [
       'Content-Type',
       'Authorization',
@@ -68,7 +85,7 @@ async function bootstrap() {
       'Cache-Control',
       'Pragma',
     ],
-    /** Login / sesión en app.cheky.co con cookies cross-site si aplica */
+    exposedHeaders: [],
     credentials: true,
     maxAge: 86400,
     optionsSuccessStatus: 204,
