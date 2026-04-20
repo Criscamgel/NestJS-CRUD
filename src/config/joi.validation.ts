@@ -10,6 +10,8 @@ export const JoiValidationSchema = Joi.object({
     MAILER_PORT: Joi.number().optional(),
     MAILER_EMAIL: Joi.string().required(),
     MAILER_SECRET_KEY: Joi.string().required(),
+    /** Destino del formulario landing (por defecto hola@cheky.co en código) */
+    CONTACT_DEMO_INBOX: Joi.string().email().optional(),
     // Seed - SuperAdmins (opcionales para no bloquear el arranque)
     SEED_ADMIN1_EMAIL: Joi.string().email().optional(),
     SEED_ADMIN1_DOCUMENT: Joi.string().optional(),

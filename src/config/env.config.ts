@@ -8,4 +8,5 @@ export const EnvConfiguration = () => ({
     mailerPort: process.env.MAILER_PORT ? parseInt(process.env.MAILER_PORT, 10) : undefined,
     mailerEmail: process.env.MAILER_EMAIL,
     mailerSecretKey: process.env.MAILER_SECRET_KEY,
+    contactDemoInbox: process.env.CONTACT_DEMO_INBOX,
 });
