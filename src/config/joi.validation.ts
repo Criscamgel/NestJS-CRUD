@@ -1,6 +1,8 @@
 import * as Joi from 'joi';
 
 export const JoiValidationSchema = Joi.object({
+    CORS_ORIGINS: Joi.string().optional(),
+    FRONTEND_URL: Joi.string().uri().optional(),
     MONGODB: Joi.required(),
     JWT_SECRET: Joi.string().required(),
     PORT: Joi.number().default(3005),
