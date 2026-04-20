@@ -330,3 +330,69 @@ export function getEmailLogoAttachment():
   }
   return { filename: 'logo512.png', path, cid: EMAIL_LOGO_CID };
 }
+
+// ─────────────────────────────────────────────
+// Template: Landing — solicitud de demo (contacto)
+// ─────────────────────────────────────────────
+export function contactDemoEmailTemplate(payload: {
+  name: string;
+  email: string;
+  company: string;
+  volumeLabel: string;
+}): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const { name, email, company, volumeLabel } = payload;
+
+  const row = (label: string, value: string) => `
+<tr>
+  <td style="
+    padding: 12px 0;
+    border-bottom: 1px solid #E5E7EB;
+    font-size: 14px;
+    color: ${BRAND.textBody};
+  ">
+    <strong style="display:block; color: ${BRAND.neutral}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">${label}</strong>
+    <span style="word-break: break-word;">${escapeHtml(value)}</span>
+  </td>
+</tr>`;
+
+  const content = `
+    <h2 style="
+      margin: 0 0 12px;
+      color: ${BRAND.neutral};
+      font-size: 22px;
+      font-weight: 700;
+    ">Nueva solicitud de demo — Landing</h2>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.65;
+    ">
+      Alguien envió el formulario <strong>Habla con un experto</strong> desde la web pública.
+      Estos son los datos para que el equipo comercial haga seguimiento:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 16px;">
+      <tbody>
+        ${row('Nombre', name)}
+        ${row('Email', email)}
+        ${row('Empresa', company)}
+        ${row('Checks al mes (rango)', volumeLabel)}
+      </tbody>
+    </table>
+
+    ${infoBox('Responde desde <strong>hola@cheky.co</strong> o tu CRM usando el email del lead. No respondas automáticamente a esta bandeja si es solo notificación interna.')}
+  `;
+
+  return emailLayout(content, showLogo);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}

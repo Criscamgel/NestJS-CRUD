@@ -16,6 +16,7 @@ import { EmailModule } from './email/email.module';
 import { UsersModule } from './users/users.module';
 import { PlansModule } from './plans/plans.module';
 import { MembershipsModule } from './memberships/memberships.module';
+import { ContactDemoModule } from './contact-demo/contact-demo.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { MembershipsModule } from './memberships/memberships.module';
     UsersModule,
     PlansModule,
     MembershipsModule,
+    ContactDemoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
