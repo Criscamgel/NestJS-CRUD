@@ -4,39 +4,49 @@ import { ValidationPipe } from '@nestjs/common';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
+/** Quita barra final para comparar orígenes (evita fallos si el .env trae `/`). */
+function normalizeOrigin(o: string): string {
+  return o.trim().replace(/\/+$/, '');
+}
+
 /**
- * Orígenes permitidos para CORS.
- * - Con `credentials: true` el navegador NO acepta `Access-Control-Allow-Origin: *`;
- *   hay que devolver el origen concreto (p. ej. https://cheky.co).
- * - `CORS_ORIGINS` = lista separada por comas. Si no hay, se usan defaults de Cheky + Vite local.
- * - `FRONTEND_URL` se añade también (compat con despliegues que solo definen uno).
+ * Lista de orígenes permitidos (CORS).
+ * - `CORS_ORIGINS` / `FRONTEND_URL`: separados por comas.
+ * - Se fusionan con valores por defecto (local + producción Cheky).
  */
-function buildCorsOriginCallback() {
+function buildCorsAllowedOrigins(): string[] {
   const raw = [process.env.CORS_ORIGINS, process.env.FRONTEND_URL]
     .filter(Boolean)
     .join(',');
   const fromEnv = raw
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => normalizeOrigin(s))
     .filter(Boolean);
 
   const defaults = [
     'https://cheky.co',
     'https://www.cheky.co',
+    'http://cheky.co',
+    'http://www.cheky.co',
+    'https://app.cheky.co',
+    'https://www.app.cheky.co',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
   ];
-  const allowList = fromEnv.length > 0 ? fromEnv : defaults;
 
+  return [...new Set([...defaults.map(normalizeOrigin), ...fromEnv])];
+}
+
+function buildCorsOriginFn(allowed: string[]) {
   return (
     origin: string | undefined,
     callback: (err: Error | null, allow?: boolean) => void,
   ) => {
-    // Sin header Origin (curl, mismo servidor, algunas apps): permitir
     if (!origin) {
       return callback(null, true);
     }
-    if (allowList.includes(origin)) {
+    const n = normalizeOrigin(origin);
+    if (allowed.includes(n)) {
       return callback(null, true);
     }
     return callback(null, false);
@@ -46,13 +56,21 @@ function buildCorsOriginCallback() {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const allowedOrigins = buildCorsAllowedOrigins();
+
   app.enableCors({
-    origin: buildCorsOriginCallback(),
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-    exposedHeaders: [],
-    credentials: true,
+    origin: buildCorsOriginFn(allowedOrigins),
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    /** Preflight puede enviar otras cabeceras según el cliente; `*` evita rechazos por “header no permitido”. */
+    allowedHeaders: '*',
+    /**
+     * El front (landing / app) usa sobre todo Bearer en `Authorization`, no cookies cross-site.
+     * `credentials: false` simplifica CORS y evita el conflicto habitual con `*` / orígenes
+     * cuando el navegador muestra “Provisional headers” y Network Error.
+     */
+    credentials: false,
     maxAge: 86400,
+    optionsSuccessStatus: 204,
   });
 
   app.setGlobalPrefix('api');
@@ -63,9 +81,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: {
-        enableImplicitConversion: true
-      }
-    })
+        enableImplicitConversion: true,
+      },
+    }),
   );
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());
