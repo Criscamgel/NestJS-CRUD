@@ -12,10 +12,24 @@ function normalizeOrigin(o: string): string {
 }
 
 /**
- * Orígenes permitidos: **siempre** se unen defaults (app + landing + local) con lo que venga en env.
- * Así añadir `cheky.co` en `CORS_ORIGINS` no puede quitar `app.cheky.co` por error.
- *
- * - `CORS_ORIGINS`, `FRONTEND_URL`, `FRONTEND_PATH`: lista separada por comas.
+ * Comprueba orígenes bajo el dominio Cheky (producción y subdominios).
+ * Así app.cheky.co, cheky.co, www., landing en subdominio, etc. siguen
+ * funcionando aunque el .env en Dokploy lleve espacios, comillas o falle el parseo.
+ */
+function isTrustedChekyPublicOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    const host = u.hostname.toLowerCase();
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    return host === 'cheky.co' || host.endsWith('.cheky.co');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Lista base + env (`CORS_ORIGINS`, `FRONTEND_URL`, `FRONTEND_PATH`).
+ * Siempre unión (no reemplazo): no se quita app al añadir landing.
  */
 function buildCorsAllowedOrigins(): string[] {
   const raw = [
@@ -45,6 +59,10 @@ function buildCorsAllowedOrigins(): string[] {
   return [...new Set([...defaults.map(normalizeOrigin), ...fromEnv])];
 }
 
+/**
+ * El paquete `cors` espera (err, allow: boolean). Si allow es false, NO añade
+ * cabeceras CORS → el navegador muestra "No Access-Control-Allow-Origin".
+ */
 function buildCorsOriginFn(allowed: string[]) {
   return (
     origin: string | undefined,
@@ -54,7 +72,7 @@ function buildCorsOriginFn(allowed: string[]) {
       return callback(null, true);
     }
     const n = normalizeOrigin(origin);
-    if (allowed.includes(n)) {
+    if (allowed.includes(n) || isTrustedChekyPublicOrigin(n)) {
       return callback(null, true);
     }
     return callback(null, false);
@@ -64,34 +82,28 @@ function buildCorsOriginFn(allowed: string[]) {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  /**
+   * Orden recomendado en Nest: prefijo global antes de CORS.
+   * Así OPTIONS /api/* y POST /api/* quedan alineados con cómo expone rutas la app.
+   */
+  app.setGlobalPrefix('api');
+
   const allowedOrigins = buildCorsAllowedOrigins();
-  logger.log(`CORS (${allowedOrigins.length} origins): ${allowedOrigins.join(', ')}`);
+  logger.log(`CORS allowlist (${allowedOrigins.length}): ${allowedOrigins.join(', ')}`);
 
   /**
-   * Misma línea que antes de los intentos con `allowedHeaders: '*'` y `credentials: false`:
-   * - `credentials: true` como en el backend original (login / cookies si los usas).
-   * - Lista fija de cabeceras (no `*`, que en muchos entornos rompe el preflight OPTIONS).
+   * No fijamos `allowedHeaders`: el middleware `cors` replica entonces las
+   * cabeceras del preflight (`Access-Control-Request-Headers`). Si la lista
+   * es demasiado corta o usa `*`, en muchos clientes el OPTIONS falla.
    */
   app.enableCors({
     origin: buildCorsOriginFn(allowedOrigins),
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Accept',
-      'Accept-Language',
-      'Origin',
-      'X-Requested-With',
-      'Cache-Control',
-      'Pragma',
-    ],
-    exposedHeaders: [],
     credentials: true,
     maxAge: 86400,
     optionsSuccessStatus: 204,
+    preflightContinue: false,
   });
-
-  app.setGlobalPrefix('api');
 
   app.useGlobalPipes(
     new ValidationPipe({
