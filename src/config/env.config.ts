@@ -1,4 +1,7 @@
 export const EnvConfiguration = () => ({
+    /** Lista separada por comas; ver `main.ts` CORS */
+    corsOrigins: process.env.CORS_ORIGINS,
+    frontendUrl: process.env.FRONTEND_URL,
     environment: process.env.NODE_ENV || 'dev',
     mongodb: process.env.MONGODB,
     port: process.env.PORT || 3002,
