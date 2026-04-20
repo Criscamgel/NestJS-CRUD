@@ -1,21 +1,31 @@
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
-/** Quita barra final para comparar orígenes (evita fallos si el .env trae `/`). */
+const logger = new Logger('Bootstrap');
+
 function normalizeOrigin(o: string): string {
   return o.trim().replace(/\/+$/, '');
 }
 
 /**
- * Lista de orígenes permitidos (CORS).
- * - `CORS_ORIGINS` / `FRONTEND_URL`: separados por comas.
- * - Se fusionan con valores por defecto (local + producción Cheky).
+ * Orígenes permitidos para CORS (navegador).
+ * - Incluye `CORS_ORIGINS`, `FRONTEND_URL` y `FRONTEND_PATH` (coma).
+ * - Se unen defaults (Cheky + Vite local).
+ *
+ * Importante: el paquete `cors` (Express) **no soporta bien** `allowedHeaders: '*'`;
+ * eso puede hacer fallar el preflight OPTIONS y el navegador reporta “sin
+ * Access-Control-Allow-Origin” aunque el backend esté vivo.
  */
 function buildCorsAllowedOrigins(): string[] {
-  const raw = [process.env.CORS_ORIGINS, process.env.FRONTEND_URL]
+  const raw = [
+    process.env.CORS_ORIGINS,
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_PATH,
+  ]
     .filter(Boolean)
     .join(',');
   const fromEnv = raw
@@ -37,38 +47,29 @@ function buildCorsAllowedOrigins(): string[] {
   return [...new Set([...defaults.map(normalizeOrigin), ...fromEnv])];
 }
 
-function buildCorsOriginFn(allowed: string[]) {
-  return (
-    origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void,
-  ) => {
-    if (!origin) {
-      return callback(null, true);
-    }
-    const n = normalizeOrigin(origin);
-    if (allowed.includes(n)) {
-      return callback(null, true);
-    }
-    return callback(null, false);
-  };
-}
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const allowedOrigins = buildCorsAllowedOrigins();
+  const origins = buildCorsAllowedOrigins();
+  logger.log(`CORS origins (${origins.length}): ${origins.join(' | ')}`);
 
   app.enableCors({
-    origin: buildCorsOriginFn(allowedOrigins),
+    /** Lista explícita — formato recomendado por `cors` (mejor que callback salvo reglas dinámicas). */
+    origin: origins,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    /** Preflight puede enviar otras cabeceras según el cliente; `*` evita rechazos por “header no permitido”. */
-    allowedHeaders: '*',
-    /**
-     * El front (landing / app) usa sobre todo Bearer en `Authorization`, no cookies cross-site.
-     * `credentials: false` simplifica CORS y evita el conflicto habitual con `*` / orígenes
-     * cuando el navegador muestra “Provisional headers” y Network Error.
-     */
-    credentials: false,
+    /** Lista explícita; NO usar `*` aquí (rompe preflight en muchas versiones de `cors`). */
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Accept-Language',
+      'Origin',
+      'X-Requested-With',
+      'Cache-Control',
+      'Pragma',
+    ],
+    /** Login / sesión en app.cheky.co con cookies cross-site si aplica */
+    credentials: true,
     maxAge: 86400,
     optionsSuccessStatus: 204,
   });
