@@ -14,6 +14,7 @@ import { CreateMembershipDto } from './dto/create-membership.dto';
 import { CounterId } from 'src/common/entities/counter-id.entity';
 import { Company } from 'src/company/entities/company.entity';
 import { User } from 'src/users/entities/user.entity';
+import { Plan } from 'src/plans/entities/plan.entity';
 import { PlansService } from 'src/plans/plans.service';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import {
@@ -33,6 +34,13 @@ function addMonths(date: Date, months: number): Date {
   d.setMonth(d.getMonth() + months);
   return d;
 }
+
+type MembershipPlanSnapshotSet = {
+  maxUsersSnapshot: number;
+  maxChecksPerMonthSnapshot: number;
+  durationMonthsSnapshot: number;
+  maxChecksForPeriodSnapshot: number;
+};
 
 @Injectable()
 export class MembershipsService {
@@ -72,6 +80,97 @@ export class MembershipsService {
       return { company: { $in: [cid, Number(cid)] } };
     }
     return { company: cid };
+  }
+
+  /** Coincide `planId` en membresías (string / número legacy). */
+  private planIdFilter(planId: string): Record<string, unknown> {
+    const pid = String(planId ?? '').trim();
+    if (!pid) return { planId: '__invalid_plan__' };
+    if (/^\d+$/.test(pid)) {
+      return { planId: { $in: [pid, Number(pid)] } };
+    }
+    return { planId: pid };
+  }
+
+  /** Snapshots de membresía alineados con la definición actual del plan en catálogo. */
+  private snapshotSetFromPlan(plan: Plan): MembershipPlanSnapshotSet | null {
+    const maxPeriod = plan.maxChecksPerMonth * plan.durationMonths;
+    if (maxPeriod < 1) return null;
+    return {
+      maxUsersSnapshot: plan.maxUsers,
+      maxChecksPerMonthSnapshot: plan.maxChecksPerMonth,
+      durationMonthsSnapshot: plan.durationMonths,
+      maxChecksForPeriodSnapshot: maxPeriod,
+    };
+  }
+
+  private snapshotsMatchPlan(
+    m: Membership,
+    snap: MembershipPlanSnapshotSet,
+  ): boolean {
+    return (
+      m.maxUsersSnapshot === snap.maxUsersSnapshot &&
+      m.maxChecksPerMonthSnapshot === snap.maxChecksPerMonthSnapshot &&
+      m.durationMonthsSnapshot === snap.durationMonthsSnapshot &&
+      m.maxChecksForPeriodSnapshot === snap.maxChecksForPeriodSnapshot
+    );
+  }
+
+  /**
+   * Si el plan en catálogo cambió después de contratar: persiste snapshots
+   * actualizados para esta membresía (dashboard + límites de checks).
+   */
+  private async reconcileMembershipSnapshotsWithPlanIfNeeded(
+    m: Membership,
+    plan: Plan,
+  ): Promise<Membership> {
+    const snap = this.snapshotSetFromPlan(plan);
+    if (!snap || this.snapshotsMatchPlan(m, snap)) {
+      return m;
+    }
+    await this.membershipModel.updateOne({ _id: m._id }, { $set: snap });
+    const fresh = await this.membershipModel.findById(m._id).exec();
+    await this.deactivateNormalUsersWhenCheckAccessBlocked(
+      String(m.companyId),
+    );
+    return fresh ?? m;
+  }
+
+  /**
+   * Tras editar un plan: actualiza snapshots en membresías ACTIVE no vencidas
+   * que usan ese plan, para que estadísticas y límites coincidan con el catálogo.
+   */
+  async syncActiveMembershipSnapshotsFromPlan(plan: Plan): Promise<void> {
+    const pid = String(plan.id).trim();
+    if (!pid) return;
+    const snap = this.snapshotSetFromPlan(plan);
+    if (!snap) return;
+    const now = new Date();
+
+    const activeList = await this.membershipModel
+      .find({
+        ...this.planIdFilter(pid),
+        status: MembershipStatus.ACTIVE,
+        expiresAt: { $gt: now },
+      })
+      .select('companyId')
+      .lean();
+
+    await this.membershipModel.updateMany(
+      {
+        ...this.planIdFilter(pid),
+        status: MembershipStatus.ACTIVE,
+        expiresAt: { $gt: now },
+      },
+      { $set: snap },
+    );
+
+    const companyIds = new Set(
+      activeList.map((d) => String(d.companyId)),
+    );
+    for (const cid of companyIds) {
+      await this.deactivateNormalUsersWhenCheckAccessBlocked(cid);
+    }
   }
 
   /** Usuarios de empresa con rol `user` (los que pueden registrar checks). */
@@ -375,7 +474,7 @@ export class MembershipsService {
     if (!cid) return null;
     await this.expireStaleMembershipsForCompany(cid);
     const now = new Date();
-    return this.membershipModel
+    const m = await this.membershipModel
       .findOne({
         ...this.companyIdFilter(cid),
         status: MembershipStatus.ACTIVE,
@@ -383,6 +482,14 @@ export class MembershipsService {
       })
       .sort({ createdAt: -1 })
       .exec();
+    if (!m) {
+      return null;
+    }
+    const plan = await this.plansService.findOneById(m.planId);
+    if (!plan) {
+      return m;
+    }
+    return this.reconcileMembershipSnapshotsWithPlanIfNeeded(m, plan);
   }
 
   /**
