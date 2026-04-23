@@ -145,6 +145,11 @@ export class PlansService {
       const updated = await this.planModel
         .findOneAndUpdate({ id }, payload, { new: true })
         .exec();
+      if (updated) {
+        await this.membershipsService.syncActiveMembershipSnapshotsFromPlan(
+          updated,
+        );
+      }
       return { message: 'Plan actualizado exitosamente', plan: this.toPublicPlan(updated!) };
     } catch (error: unknown) {
       if (isMongoDuplicateKeyError(error)) {
