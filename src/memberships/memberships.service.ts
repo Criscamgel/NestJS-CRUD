@@ -74,6 +74,55 @@ export class MembershipsService {
     return { company: cid };
   }
 
+  /** Usuarios de empresa con rol `user` (los que pueden registrar checks). */
+  private normalCheckUserFilter(companyId: string): Record<string, unknown> {
+    return {
+      ...this.userCompanyFilter(companyId),
+      roles: 'user',
+    };
+  }
+
+  /**
+   * Desactiva usuarios `user` si no hay membresía vigente o ya no quedan checks del periodo.
+   * No altera admins; no considera el tope mensual (se renueva cada mes).
+   */
+  private async deactivateNormalUsersWhenCheckAccessBlocked(
+    companyId: string,
+  ): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return;
+    const now = new Date();
+    const m = await this.membershipModel
+      .findOne({
+        ...this.companyIdFilter(cid),
+        status: MembershipStatus.ACTIVE,
+        expiresAt: { $gt: now },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const maxPeriod = m?.maxChecksForPeriodSnapshot ?? 0;
+    const usedPeriod = m?.checksUsedInPeriod ?? 0;
+    const periodExhausted = m != null && usedPeriod >= maxPeriod && maxPeriod > 0;
+    const blocked = m == null || periodExhausted;
+
+    if (!blocked) {
+      return;
+    }
+
+    await this.userModel.updateMany(this.normalCheckUserFilter(cid), {
+      $set: { isActive: false },
+    });
+  }
+
+  private async reactivateNormalUsersForCompany(companyId: string): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return;
+    await this.userModel.updateMany(this.normalCheckUserFilter(cid), {
+      $set: { isActive: true },
+    });
+  }
+
   async create(dto: CreateMembershipDto, actor: User) {
     const companyIdNorm = this.normalizeCompanyId(dto.companyId);
     if (!companyIdNorm) {
@@ -165,6 +214,8 @@ export class MembershipsService {
       checksUsedInPeriod: 0,
     });
 
+    await this.reactivateNormalUsersForCompany(companyIdNorm);
+
     return {
       message: 'Membresía creada exitosamente',
       membership,
@@ -243,6 +294,7 @@ export class MembershipsService {
   async assertCheckLimits(companyId: string): Promise<void> {
     const m = await this.getActiveMembershipForCompany(companyId);
     if (!m) {
+      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
       throw new ForbiddenException(
         'La compañía no tiene una membresía activa para registrar checks.',
       );
@@ -254,6 +306,7 @@ export class MembershipsService {
       );
     }
     if (m.checksUsedInPeriod >= m.maxChecksForPeriodSnapshot) {
+      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
       throw new ForbiddenException(
         'Se alcanzó el límite de checks del periodo de membresía.',
       );
@@ -279,9 +332,20 @@ export class MembershipsService {
     );
 
     if (result.modifiedCount === 0) {
+      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
       throw new ForbiddenException(
         'No se pudo registrar el consumo de checks: límite del plan alcanzado.',
       );
+    }
+
+    const after = await this.membershipModel.findById(m._id).lean();
+    if (
+      after &&
+      (after.checksUsedInPeriod ?? 0) >=
+        (after.maxChecksForPeriodSnapshot ?? 0) &&
+      (after.maxChecksForPeriodSnapshot ?? 0) > 0
+    ) {
+      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
     }
   }
 
@@ -298,6 +362,9 @@ export class MembershipsService {
     m.deactivatedBy = actorId;
     m.deactivationReason = reason ?? 'manual_super_admin';
     await m.save();
+    await this.deactivateNormalUsersWhenCheckAccessBlocked(
+      String(m.companyId),
+    );
     return { message: 'Membresía suspendida exitosamente' };
   }
 
@@ -340,6 +407,7 @@ export class MembershipsService {
         },
       },
     );
+    await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
   }
 
   /** Planes a ocultar del catálogo (membresía vigente no vencida). */
