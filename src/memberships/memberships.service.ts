@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -43,13 +45,48 @@ export class MembershipsService {
     private readonly userModel: Model<User>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<CounterId>,
+    @Inject(forwardRef(() => PlansService))
     private readonly plansService: PlansService,
   ) {}
 
+  private normalizeCompanyId(companyId: string | undefined | null): string {
+    if (companyId == null) return '';
+    return String(companyId).trim();
+  }
+
+  /** Coincide `companyId` en membresías guardado como string o número (legacy). */
+  private companyIdFilter(companyId: string): Record<string, unknown> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { companyId: '__invalid_company__' };
+    if (/^\d+$/.test(cid)) {
+      return { companyId: { $in: [cid, Number(cid)] } };
+    }
+    return { companyId: cid };
+  }
+
+  /** Misma lógica para el campo `company` en usuarios. */
+  private userCompanyFilter(companyId: string): Record<string, unknown> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { company: '__invalid_company__' };
+    if (/^\d+$/.test(cid)) {
+      return { company: { $in: [cid, Number(cid)] } };
+    }
+    return { company: cid };
+  }
+
   async create(dto: CreateMembershipDto, actor: User) {
-    const company = await this.companyModel.findOne({ id: dto.companyId }).exec();
+    const companyIdNorm = this.normalizeCompanyId(dto.companyId);
+    if (!companyIdNorm) {
+      throw new BadRequestException('companyId inválido');
+    }
+
+    const company = await this.companyModel
+      .findOne({ id: companyIdNorm })
+      .exec();
     if (!company) {
-      throw new NotFoundException(`Compañía con id ${dto.companyId} no encontrada`);
+      throw new NotFoundException(
+        `Compañía con id ${companyIdNorm} no encontrada`,
+      );
     }
 
     const plan = await this.plansService.findOneById(dto.planId);
@@ -69,8 +106,8 @@ export class MembershipsService {
       !isSuperAdmin;
 
     if (isCompanyAdmin) {
-      const actorCompany = actor.company?.trim();
-      if (!actorCompany || actorCompany !== String(dto.companyId).trim()) {
+      const actorCompany = this.normalizeCompanyId(actor.company);
+      if (!actorCompany || actorCompany !== companyIdNorm) {
         throw new ForbiddenException(
           'Solo puedes contratar planes para tu propia empresa',
         );
@@ -93,7 +130,7 @@ export class MembershipsService {
 
     await this.membershipModel.updateMany(
       {
-        companyId: dto.companyId,
+        ...this.companyIdFilter(companyIdNorm),
         status: MembershipStatus.ACTIVE,
       },
       {
@@ -114,8 +151,8 @@ export class MembershipsService {
 
     const membership = await this.membershipModel.create({
       id: counter.seq.toString(),
-      companyId: dto.companyId,
-      planId: plan.id,
+      companyId: companyIdNorm,
+      planId: String(plan.id),
       status: MembershipStatus.ACTIVE,
       startedAt,
       expiresAt,
@@ -170,21 +207,13 @@ export class MembershipsService {
         'La compañía no tiene una membresía activa. Contrata un plan para crear usuarios.',
       );
     }
-    await this.lazyExpireIfNeeded(m);
-
-    const fresh = await this.membershipModel.findById(m._id).exec();
-    if (!fresh || fresh.status !== MembershipStatus.ACTIVE) {
-      throw new ForbiddenException(
-        'La membresía de la compañía no está activa. No se pueden crear más usuarios.',
-      );
-    }
 
     const count = await this.userModel.countDocuments({
-      company: companyId,
+      ...this.userCompanyFilter(companyId),
       roles: 'user',
     });
 
-    if (count >= fresh.maxUsersSnapshot) {
+    if (count >= m.maxUsersSnapshot) {
       throw new ForbiddenException(
         'Se alcanzó el límite de usuarios del plan (solo cuentan usuarios normales, no administradores).',
       );
@@ -197,17 +226,12 @@ export class MembershipsService {
     if (!m) {
       return;
     }
-    await this.lazyExpireIfNeeded(m);
-    const fresh = await this.membershipModel.findById(m._id).exec();
-    if (!fresh || fresh.status !== MembershipStatus.ACTIVE) {
-      return;
-    }
     const mk = monthKey();
-    if (fresh.currentMonthKey === mk) {
+    if (m.currentMonthKey === mk) {
       return;
     }
     await this.membershipModel.updateOne(
-      { _id: fresh._id },
+      { _id: m._id },
       { $set: { currentMonthKey: mk, checksUsedInCurrentMonth: 0 } },
     );
   }
@@ -217,16 +241,11 @@ export class MembershipsService {
    * Gana el límite que se agote primero (mensual o del periodo completo).
    */
   async assertCheckLimits(companyId: string): Promise<void> {
-    let m = await this.getActiveMembershipForCompany(companyId);
+    const m = await this.getActiveMembershipForCompany(companyId);
     if (!m) {
       throw new ForbiddenException(
         'La compañía no tiene una membresía activa para registrar checks.',
       );
-    }
-    await this.lazyExpireIfNeeded(m);
-    m = await this.membershipModel.findById(m._id).exec();
-    if (!m || m.status !== MembershipStatus.ACTIVE) {
-      throw new ForbiddenException('La membresía no está activa.');
     }
 
     if (m.checksUsedInCurrentMonth >= m.maxChecksPerMonthSnapshot) {
@@ -243,12 +262,7 @@ export class MembershipsService {
 
   /** Incremento atómico tras persistir el check. */
   async incrementCheckUsage(companyId: string): Promise<void> {
-    const m = await this.membershipModel
-      .findOne({
-        companyId,
-        status: MembershipStatus.ACTIVE,
-      })
-      .exec();
+    const m = await this.getActiveMembershipForCompany(companyId);
     if (!m) {
       throw new ForbiddenException('Membresía no disponible.');
     }
@@ -257,6 +271,7 @@ export class MembershipsService {
       {
         _id: m._id,
         status: MembershipStatus.ACTIVE,
+        expiresAt: { $gt: new Date() },
         checksUsedInCurrentMonth: { $lt: m.maxChecksPerMonthSnapshot },
         checksUsedInPeriod: { $lt: m.maxChecksForPeriodSnapshot },
       },
@@ -289,48 +304,70 @@ export class MembershipsService {
   async getActiveMembershipForCompany(
     companyId: string,
   ): Promise<Membership | null> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return null;
+    await this.expireStaleMembershipsForCompany(cid);
+    const now = new Date();
     return this.membershipModel
       .findOne({
-        companyId,
+        ...this.companyIdFilter(cid),
         status: MembershipStatus.ACTIVE,
+        expiresAt: { $gt: now },
       })
+      .sort({ createdAt: -1 })
       .exec();
   }
 
-  private async lazyExpireIfNeeded(m: Membership): Promise<void> {
-    if (m.status !== MembershipStatus.ACTIVE) {
-      return;
-    }
-    if (m.expiresAt > new Date()) {
-      return;
-    }
-    await this.membershipModel.updateOne(
-      { _id: m._id },
+  /**
+   * Marca como expiradas las membresías ACTIVE con `expiresAt` vencido (misma lógica que el catálogo de planes).
+   */
+  async expireStaleMembershipsForCompany(companyId: string): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return;
+    const now = new Date();
+    await this.membershipModel.updateMany(
+      {
+        ...this.companyIdFilter(cid),
+        status: MembershipStatus.ACTIVE,
+        expiresAt: { $lte: now },
+      },
       {
         $set: {
           status: MembershipStatus.EXPIRED,
+          deactivatedAt: now,
           deactivationReason: 'expired',
-          deactivatedAt: new Date(),
+          deactivatedBy: 'system',
         },
       },
     );
+  }
+
+  /** Planes a ocultar del catálogo (membresía vigente no vencida). */
+  async getActivePlanIdsExcludedFromCatalog(
+    companyId: string,
+  ): Promise<string[]> {
+    await this.expireStaleMembershipsForCompany(companyId);
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return [];
+    const now = new Date();
+    const docs = await this.membershipModel
+      .find({
+        ...this.companyIdFilter(cid),
+        status: MembershipStatus.ACTIVE,
+        expiresAt: { $gt: now },
+      })
+      .select('planId')
+      .lean();
+    return [...new Set(docs.map((d) => String(d.planId)).filter(Boolean))];
   }
 
   /**
    * Resumen para dashboard del administrador de empresa (membresía activa y uso de checks).
    */
   async getDashboardSummaryForCompany(companyId: string) {
-    let m = await this.getActiveMembershipForCompany(companyId);
-    if (m) {
-      await this.lazyExpireIfNeeded(m);
-    }
-    m = await this.getActiveMembershipForCompany(companyId);
+    const m = await this.getActiveMembershipForCompany(companyId);
 
-    if (
-      !m ||
-      m.status !== MembershipStatus.ACTIVE ||
-      m.expiresAt <= new Date()
-    ) {
+    if (!m) {
       return {
         hasActiveMembership: false,
         planName: null as string | null,

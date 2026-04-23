@@ -1,12 +1,13 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Membership } from 'src/memberships/entities/membership.entity';
-import { MembershipStatus } from 'src/memberships/membership-status.enum';
+import { MembershipsService } from 'src/memberships/memberships.service';
 import { User } from 'src/users/entities/user.entity';
 import { Plan } from './entities/plan.entity';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -27,8 +28,8 @@ export class PlansService {
     private readonly planModel: Model<Plan>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<CounterId>,
-    @InjectModel(Membership.name)
-    private readonly membershipModel: Model<Membership>,
+    @Inject(forwardRef(() => MembershipsService))
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   async create(dto: CreatePlanDto) {
@@ -87,18 +88,10 @@ export class PlansService {
 
       const companyId = requester.company?.trim();
       if (companyId) {
-        const now = new Date();
-        const activeMemberships = await this.membershipModel
-          .find({
+        const excludePlanIds =
+          await this.membershipsService.getActivePlanIdsExcludedFromCatalog(
             companyId,
-            status: MembershipStatus.ACTIVE,
-            expiresAt: { $gt: now },
-          })
-          .select('planId')
-          .lean();
-        const excludePlanIds = [
-          ...new Set(activeMemberships.map((m) => m.planId)),
-        ];
+          );
         if (excludePlanIds.length > 0) {
           catalogClause['id'] = { $nin: excludePlanIds };
         }

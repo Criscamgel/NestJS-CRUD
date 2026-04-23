@@ -14,7 +14,7 @@ import { PlansModule } from 'src/plans/plans.module';
   imports: [
     forwardRef(() => AuthModule),
     CommonModule,
-    PlansModule,
+    forwardRef(() => PlansModule),
     MongooseModule.forFeature([
       { name: Membership.name, schema: MembershipSchema },
       { name: CounterId.name, schema: CounterIdSchema },
