@@ -46,7 +46,7 @@ export class MembershipsService {
     private readonly plansService: PlansService,
   ) {}
 
-  async create(dto: CreateMembershipDto, actorId: string) {
+  async create(dto: CreateMembershipDto, actor: User) {
     const company = await this.companyModel.findOne({ id: dto.companyId }).exec();
     if (!company) {
       throw new NotFoundException(`Compañía con id ${dto.companyId} no encontrada`);
@@ -58,6 +58,28 @@ export class MembershipsService {
     }
     if (!plan.isActive) {
       throw new BadRequestException('El plan no está activo');
+    }
+
+    const actorRoles = actor.roles || [];
+    const actorLegacy = (actor as { role?: string }).role;
+    const isSuperAdmin =
+      actorRoles.includes('superAdmin') || actorLegacy === 'superAdmin';
+    const isCompanyAdmin =
+      (actorRoles.includes('admin') || actorLegacy === 'admin') &&
+      !isSuperAdmin;
+
+    if (isCompanyAdmin) {
+      const actorCompany = actor.company?.trim();
+      if (!actorCompany || actorCompany !== String(dto.companyId).trim()) {
+        throw new ForbiddenException(
+          'Solo puedes contratar planes para tu propia empresa',
+        );
+      }
+      if (plan.isVisible === false) {
+        throw new ForbiddenException(
+          'Este plan no está disponible en el catálogo',
+        );
+      }
     }
 
     const maxChecksForPeriodSnapshot = plan.maxChecksPerMonth * plan.durationMonths;
@@ -78,7 +100,7 @@ export class MembershipsService {
         $set: {
           status: MembershipStatus.CANCELLED,
           deactivatedAt: new Date(),
-          deactivatedBy: actorId,
+          deactivatedBy: actor.id,
           deactivationReason: 'replaced_by_new_membership',
         },
       },
@@ -292,5 +314,57 @@ export class MembershipsService {
         },
       },
     );
+  }
+
+  /**
+   * Resumen para dashboard del administrador de empresa (membresía activa y uso de checks).
+   */
+  async getDashboardSummaryForCompany(companyId: string) {
+    let m = await this.getActiveMembershipForCompany(companyId);
+    if (m) {
+      await this.lazyExpireIfNeeded(m);
+    }
+    m = await this.getActiveMembershipForCompany(companyId);
+
+    if (
+      !m ||
+      m.status !== MembershipStatus.ACTIVE ||
+      m.expiresAt <= new Date()
+    ) {
+      return {
+        hasActiveMembership: false,
+        planName: null as string | null,
+        daysUntilExpiry: null as number | null,
+        checksUsedInPeriod: 0,
+        checksPendingMonthly: null as number | null,
+      };
+    }
+
+    const planDoc = await this.plansService.findOneById(m.planId);
+    const planName =
+      planDoc?.name?.trim() || `Plan ${m.planId}`;
+
+    const now = new Date();
+    const msPerDay = 86_400_000;
+    const daysUntilExpiry = Math.max(
+      0,
+      Math.ceil(
+        (new Date(m.expiresAt).getTime() - now.getTime()) / msPerDay,
+      ),
+    );
+
+    const checksPendingMonthly = Math.max(
+      0,
+      (m.maxChecksPerMonthSnapshot ?? 0) -
+        (m.checksUsedInCurrentMonth ?? 0),
+    );
+
+    return {
+      hasActiveMembership: true,
+      planName,
+      daysUntilExpiry,
+      checksUsedInPeriod: m.checksUsedInPeriod ?? 0,
+      checksPendingMonthly,
+    };
   }
 }

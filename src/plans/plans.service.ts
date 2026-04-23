@@ -5,6 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { Membership } from 'src/memberships/entities/membership.entity';
+import { MembershipStatus } from 'src/memberships/membership-status.enum';
+import { User } from 'src/users/entities/user.entity';
 import { Plan } from './entities/plan.entity';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
@@ -24,6 +27,8 @@ export class PlansService {
     private readonly planModel: Model<Plan>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<CounterId>,
+    @InjectModel(Membership.name)
+    private readonly membershipModel: Model<Membership>,
   ) {}
 
   async create(dto: CreatePlanDto) {
@@ -55,9 +60,62 @@ export class PlansService {
     }
   }
 
-  async findAll(paginationQuery: PaginationQueryDto) {
+  async findAll(paginationQuery: PaginationQueryDto, requester?: User) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
-    const filter = buildRegexOrFilter<Plan>(paginationQuery.search, ['name']);
+    const searchFilter = buildRegexOrFilter<Plan>(paginationQuery.search, [
+      'name',
+    ]);
+
+    const requesterRoles = requester?.roles || [];
+    const requesterLegacy = (requester as { role?: string } | undefined)?.role;
+    const isSuperAdmin =
+      requesterRoles.includes('superAdmin') ||
+      requesterLegacy === 'superAdmin';
+
+    const clauses: Record<string, unknown>[] = [];
+
+    if (Object.keys(searchFilter).length > 0) {
+      clauses.push(searchFilter);
+    }
+
+    /** Admin de empresa: catálogo = visibles, activos, sin el plan de una membresía vigente. */
+    if (requester && !isSuperAdmin) {
+      const catalogClause: Record<string, unknown> = {
+        isVisible: true,
+        isActive: true,
+      };
+
+      const companyId = requester.company?.trim();
+      if (companyId) {
+        const now = new Date();
+        const activeMemberships = await this.membershipModel
+          .find({
+            companyId,
+            status: MembershipStatus.ACTIVE,
+            expiresAt: { $gt: now },
+          })
+          .select('planId')
+          .lean();
+        const excludePlanIds = [
+          ...new Set(activeMemberships.map((m) => m.planId)),
+        ];
+        if (excludePlanIds.length > 0) {
+          catalogClause['id'] = { $nin: excludePlanIds };
+        }
+      }
+
+      clauses.push(catalogClause);
+    }
+
+    let filter: Record<string, unknown>;
+    if (clauses.length === 0) {
+      filter = {};
+    } else if (clauses.length === 1) {
+      filter = clauses[0]!;
+    } else {
+      filter = { $and: clauses };
+    }
+
     const [data, total] = await Promise.all([
       this.planModel.find(filter).skip(skip).limit(limit).exec(),
       this.planModel.countDocuments(filter),

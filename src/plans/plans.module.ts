@@ -1,5 +1,9 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import {
+  Membership,
+  MembershipSchema,
+} from 'src/memberships/entities/membership.entity';
 import { Plan, PlanSchema } from './entities/plan.entity';
 import { CounterId, CounterIdSchema } from 'src/common/entities/counter-id.entity';
 import { PlansService } from './plans.service';
@@ -14,6 +18,7 @@ import { CommonModule } from 'src/common/common.module';
     MongooseModule.forFeature([
       { name: Plan.name, schema: PlanSchema },
       { name: CounterId.name, schema: CounterIdSchema },
+      { name: Membership.name, schema: MembershipSchema },
     ]),
   ],
   controllers: [PlansController],
