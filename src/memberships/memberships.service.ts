@@ -174,10 +174,17 @@ export class MembershipsService {
   }
 
   /** Usuarios de empresa con rol `user` (los que pueden registrar checks). */
+  private normalUserRoleFilter(): Record<string, unknown> {
+    return {
+      $or: [{ roles: { $in: ['user'] } }, { role: 'user' }],
+    };
+  }
+
+  /** Usuarios de empresa con rol `user` (los que pueden registrar checks). */
   private normalCheckUserFilter(companyId: string): Record<string, unknown> {
     return {
       ...this.userCompanyFilter(companyId),
-      roles: 'user',
+      ...this.normalUserRoleFilter(),
     };
   }
 
@@ -360,7 +367,7 @@ export class MembershipsService {
 
     const count = await this.userModel.countDocuments({
       ...this.userCompanyFilter(companyId),
-      roles: 'user',
+      ...this.normalUserRoleFilter(),
     });
 
     if (count >= m.maxUsersSnapshot) {
@@ -541,6 +548,10 @@ export class MembershipsService {
    */
   async getDashboardSummaryForCompany(companyId: string) {
     const m = await this.getActiveMembershipForCompany(companyId);
+    const companyUsersCount = await this.userModel.countDocuments({
+      ...this.userCompanyFilter(companyId),
+      ...this.normalUserRoleFilter(),
+    });
 
     if (!m) {
       return {
@@ -549,6 +560,7 @@ export class MembershipsService {
         daysUntilExpiry: null as number | null,
         checksUsedInPeriod: 0,
         checksPendingMonthly: null as number | null,
+        companyUsersCount,
       };
     }
 
@@ -577,6 +589,7 @@ export class MembershipsService {
       daysUntilExpiry,
       checksUsedInPeriod: m.checksUsedInPeriod ?? 0,
       checksPendingMonthly,
+      companyUsersCount,
     };
   }
 }
