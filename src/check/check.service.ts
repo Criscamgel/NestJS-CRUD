@@ -27,6 +27,7 @@ import {
   phoneForRiskSeal,
   resolveRiskSealScoringUrl,
 } from 'src/check/utils/riskseal-request.util';
+import { trustScorePercentFromSnapshot } from 'src/check/utils/trust-score-from-snapshot.util';
 
 @Injectable()
 export class CheckService {
@@ -175,6 +176,7 @@ export class CheckService {
               ? String(actor.company)
               : undefined,
           riskSealResponse: snapshot,
+          trustScore: trustScorePercentFromSnapshot(snapshot),
         });
 
         if (!isSuperAdmin && actor.company) {
