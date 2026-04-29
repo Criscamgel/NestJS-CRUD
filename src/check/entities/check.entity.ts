@@ -43,6 +43,10 @@ export class Check extends Document {
     @Prop({ type: Object })
     riskSealResponse?: Record<string, unknown>;
 
+    /** Puntuación 0–100 denormalizada para listados (sin enviar `riskSealResponse`). */
+    @Prop({ index: true })
+    trustScore?: number;
+
 }
 
 export const CheckSchema = SchemaFactory.createForClass( Check );
