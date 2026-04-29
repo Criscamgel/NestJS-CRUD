@@ -31,6 +31,10 @@ export class Check extends Document {
     })
     mobile!: string;
 
+    /** `User.id` (string) del operador que creó el registro; ausente en datos legacy. */
+    @Prop({ index: true })
+    createdByUserId?: string;
+
 }
 
 export const CheckSchema = SchemaFactory.createForClass( Check );

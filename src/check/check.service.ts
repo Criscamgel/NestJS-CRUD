@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { CreateCheckDto } from './dto/create-check.dto';
 import { UpdateCheckDto } from './dto/update-check.dto';
@@ -31,13 +33,59 @@ export class CheckService {
     private readonly counterIdModel: Model<any>,
     private readonly http: AxiosAdapter,
     private readonly membershipsService: MembershipsService,
-  ){}
-  
+  ) {}
+
+  private isSuperAdminActor(actor: User): boolean {
+    const actorRoles = actor.roles || [];
+    const actorLegacy = (actor as { role?: string }).role;
+    return actorRoles.includes('superAdmin') || actorLegacy === 'superAdmin';
+  }
+
+  private buildFindAllFilter(
+    paginationQuery: PaginationQueryDto,
+    actor: User,
+  ): Record<string, unknown> {
+    const searchFilter = buildRegexOrFilter<Check>(paginationQuery.search, [
+      'name',
+      'lastName',
+      'email',
+      'mobile',
+    ]);
+    const scope = this.isSuperAdminActor(actor)
+      ? {}
+      : { createdByUserId: actor.id };
+
+    if (!Object.keys(searchFilter).length) {
+      return scope;
+    }
+    if (!Object.keys(scope).length) {
+      return searchFilter;
+    }
+    return { $and: [scope, searchFilter] };
+  }
+
+  private assertCanAccessCheck(
+    check: (Check & { createdByUserId?: string }) | null,
+    actor: User,
+  ): Check & { createdByUserId?: string } {
+    if (!check) {
+      throw new NotFoundException('Check no encontrado.');
+    }
+    if (this.isSuperAdminActor(actor)) {
+      return check;
+    }
+    const ownerId = check.createdByUserId;
+    if (!ownerId) {
+      throw new ForbiddenException('No tienes permiso para acceder a este check.');
+    }
+    if (ownerId !== actor.id) {
+      throw new ForbiddenException('No tienes permiso para acceder a este check.');
+    }
+    return check;
+  }
+
   async create(createCheckDto: CreateCheckDto, actor: User) {
-      const actorRoles = actor.roles || [];
-      const actorLegacy = (actor as { role?: string }).role;
-      const isSuperAdmin =
-        actorRoles.includes('superAdmin') || actorLegacy === 'superAdmin';
+      const isSuperAdmin = this.isSuperAdminActor(actor);
 
       if (!isSuperAdmin) {
         if (!actor.company) {
@@ -59,15 +107,29 @@ export class CheckService {
 
         createCheckDto.id = counter.seq.toString();
 
+        const bodyRiskSeal = {
+          id: createCheckDto.id,
+          name: createCheckDto.name,
+          lastName: createCheckDto.lastName,
+          email: createCheckDto.email,
+          mobile: createCheckDto.mobile,
+        };
 
-        const data = await this.http.post<FootPrint>(process.env.REQUEST_RISKSEAL!, createCheckDto, {
-          headers: {
-            'X-API-KEY': process.env.KEY_RISKSEAL!,
-            'Content-Type': 'application/json'
-          }
+        const data = await this.http.post<FootPrint>(
+          process.env.REQUEST_RISKSEAL!,
+          bodyRiskSeal,
+          {
+            headers: {
+              'X-API-KEY': process.env.KEY_RISKSEAL!,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+
+        const check = await this.checkModel.create({
+          ...bodyRiskSeal,
+          createdByUserId: actor.id,
         });
-
-        const check = await this.checkModel.create( createCheckDto );
 
         if (!isSuperAdmin && actor.company) {
           try {
@@ -91,16 +153,11 @@ export class CheckService {
       }
   }
 
-  async findAll(paginationQuery: PaginationQueryDto) {
+  async findAll(paginationQuery: PaginationQueryDto, actor: User) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
-    const filter = buildRegexOrFilter<Check>(paginationQuery.search, [
-      'name',
-      'lastName',
-      'email',
-      'mobile',
-    ]);
+    const filter = this.buildFindAllFilter(paginationQuery, actor);
     const [data, total] = await Promise.all([
-      this.checkModel.find(filter).skip(skip).limit(limit).exec(),
+      this.checkModel.find(filter).skip(skip).limit(limit).lean().exec(),
       this.checkModel.countDocuments(filter),
     ]);
     return {
@@ -109,16 +166,21 @@ export class CheckService {
     };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} check`;
+  async findOneByPublicId(checkId: string, actor: User) {
+    const doc = await this.checkModel.findOne({ id: checkId }).exec();
+    this.assertCanAccessCheck(doc, actor);
+    return {
+      message: 'Check obtenido',
+      data: doc,
+    };
   }
 
-  update(id: number, updateCheckDto: UpdateCheckDto) {
-    return `This action updates a #${id} check`;
+  update(checkId: string, updateCheckDto: UpdateCheckDto) {
+    return `This action updates a #${checkId} check`;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} check`;
+  remove(checkId: string) {
+    return `This action removes a #${checkId} check`;
   }
 
   private handleExceptions( error: any ) {
