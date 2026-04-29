@@ -18,7 +18,7 @@ import { User } from 'src/users/entities/user.entity';
 @Controller(['check', 'checks'])
 @Auth()
 export class CheckController {
-  constructor(private readonly checkService: CheckService) { }
+  constructor(private readonly checkService: CheckService) {}
 
   @Post()
   create(
@@ -29,22 +29,28 @@ export class CheckController {
   }
 
   @Get()
-  findAll(@Query() paginationQuery: PaginationQueryDto) {
-    return this.checkService.findAll(paginationQuery);
+  findAll(
+    @Query() paginationQuery: PaginationQueryDto,
+    @GetUser() user: User,
+  ) {
+    return this.checkService.findAll(paginationQuery, user);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.checkService.findOne(+id);
+  @Get(':checkId')
+  findOne(@Param('checkId') checkId: string, @GetUser() user: User) {
+    return this.checkService.findOneByPublicId(checkId, user);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateCheckDto: UpdateCheckDto) {
-    return this.checkService.update(+id, updateCheckDto);
+  @Patch(':checkId')
+  update(
+    @Param('checkId') checkId: string,
+    @Body() updateCheckDto: UpdateCheckDto,
+  ) {
+    return this.checkService.update(checkId, updateCheckDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.checkService.remove(+id);
+  @Delete(':checkId')
+  remove(@Param('checkId') checkId: string) {
+    return this.checkService.remove(checkId);
   }
 }

@@ -2,6 +2,8 @@ import * as Joi from 'joi';
 
 export const JoiValidationSchema = Joi.object({
     CORS_ORIGINS: Joi.string().optional(),
+    /** WebApp (SPA): enlaces en correos de bienvenida y recuperación de contraseña. */
+    PUBLIC_WEB_APP_URL: Joi.string().uri().optional(),
     FRONTEND_URL: Joi.string().uri().optional(),
     MONGODB: Joi.required(),
     JWT_SECRET: Joi.string().required(),
