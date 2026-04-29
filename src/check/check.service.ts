@@ -22,6 +22,11 @@ import {
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import { MembershipsService } from 'src/memberships/memberships.service';
 import { User } from 'src/users/entities/user.entity';
+import {
+  buildRiskSealNewReportBody,
+  phoneForRiskSeal,
+  resolveRiskSealScoringUrl,
+} from 'src/check/utils/riskseal-request.util';
 
 @Injectable()
 export class CheckService {
@@ -41,6 +46,14 @@ export class CheckService {
     return actorRoles.includes('superAdmin') || actorLegacy === 'superAdmin';
   }
 
+  private isCompanyAdminActor(actor: User): boolean {
+    const actorRoles = actor.roles || [];
+    const actorLegacy = (actor as { role?: string }).role;
+    const isAdmin =
+      actorRoles.includes('admin') || actorLegacy === 'admin';
+    return isAdmin && !this.isSuperAdminActor(actor);
+  }
+
   private buildFindAllFilter(
     paginationQuery: PaginationQueryDto,
     actor: User,
@@ -51,9 +64,14 @@ export class CheckService {
       'email',
       'mobile',
     ]);
-    const scope = this.isSuperAdminActor(actor)
-      ? {}
-      : { createdByUserId: actor.id };
+    let scope: Record<string, unknown> = {};
+    if (this.isSuperAdminActor(actor)) {
+      scope = {};
+    } else if (this.isCompanyAdminActor(actor) && actor.company) {
+      scope = { companyId: String(actor.company) };
+    } else {
+      scope = { createdByUserId: actor.id };
+    }
 
     if (!Object.keys(searchFilter).length) {
       return scope;
@@ -65,14 +83,23 @@ export class CheckService {
   }
 
   private assertCanAccessCheck(
-    check: (Check & { createdByUserId?: string }) | null,
+    check: (Check & {
+      createdByUserId?: string;
+      companyId?: string;
+    }) | null,
     actor: User,
-  ): Check & { createdByUserId?: string } {
+  ): Check & { createdByUserId?: string; companyId?: string } {
     if (!check) {
       throw new NotFoundException('Check no encontrado.');
     }
     if (this.isSuperAdminActor(actor)) {
       return check;
+    }
+    if (this.isCompanyAdminActor(actor) && actor.company) {
+      const cid = check.companyId != null ? String(check.companyId) : '';
+      if (cid && cid === String(actor.company)) {
+        return check;
+      }
     }
     const ownerId = check.createdByUserId;
     if (!ownerId) {
@@ -98,37 +125,56 @@ export class CheckService {
       }
 
       try {
+        if (!process.env.KEY_RISKSEAL?.trim()) {
+          throw new BadRequestException(
+            'Falta configurar KEY_RISKSEAL para consultar RiskSeal.',
+          );
+        }
 
-        const counter = await this.counterIdModel.findByIdAndUpdate(
-        'checks',  // ID del contador
-        { $inc: { seq: 1 } },  // Incrementa +1
-        { new: true, upsert: true },  // Crea si no existe, devuelve nuevo valor
-      );
-
-        createCheckDto.id = counter.seq.toString();
-
-        const bodyRiskSeal = {
-          id: createCheckDto.id,
-          name: createCheckDto.name,
+        /**
+         * RiskSeal `POST …/credit-scoring/v2`: únicamente `first_name`, `last_name`,
+         * `email`, `phone` (E.164). Si el JSON incluye `id`, el proveedor asume
+         * actualización de informe y responde "Original report not found".
+         */
+        const riskSealUrl = resolveRiskSealScoringUrl();
+        const riskSealBody = buildRiskSealNewReportBody({
+          firstName: createCheckDto.name,
           lastName: createCheckDto.lastName,
           email: createCheckDto.email,
-          mobile: createCheckDto.mobile,
-        };
+          phone: phoneForRiskSeal(createCheckDto.mobile),
+        });
 
-        const data = await this.http.post<FootPrint>(
-          process.env.REQUEST_RISKSEAL!,
-          bodyRiskSeal,
-          {
-            headers: {
-              'X-API-KEY': process.env.KEY_RISKSEAL!,
-              'Content-Type': 'application/json',
-            },
+        const data = await this.http.post<FootPrint>(riskSealUrl, riskSealBody, {
+          headers: {
+            'X-API-KEY': process.env.KEY_RISKSEAL!,
+            'Content-Type': 'application/json',
           },
+        });
+
+        const counter = await this.counterIdModel.findByIdAndUpdate(
+          'checks',
+          { $inc: { seq: 1 } },
+          { new: true, upsert: true },
         );
+        const publicId = counter.seq.toString();
+
+        const snapshot =
+          typeof data === 'object' && data !== null
+            ? (JSON.parse(JSON.stringify(data)) as Record<string, unknown>)
+            : {};
 
         const check = await this.checkModel.create({
-          ...bodyRiskSeal,
+          id: publicId,
+          name: createCheckDto.name.trim(),
+          lastName: createCheckDto.lastName.trim(),
+          email: createCheckDto.email.trim().toLowerCase(),
+          mobile: createCheckDto.mobile.trim(),
           createdByUserId: actor.id,
+          companyId:
+            !isSuperAdmin && actor.company
+              ? String(actor.company)
+              : undefined,
+          riskSealResponse: snapshot,
         });
 
         if (!isSuperAdmin && actor.company) {
@@ -149,7 +195,12 @@ export class CheckService {
         if (error instanceof HttpException) {
           throw error;
         }
-        throw new BadRequestException(`Error externo: ${error}`);
+        const raw =
+          error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+        const msg = raw.startsWith('Error: ') ? raw.slice(7) : raw;
+        throw new BadRequestException(
+          msg ? `Error en RiskSeal: ${msg}` : 'Error al consultar RiskSeal.',
+        );
       }
   }
 
@@ -157,7 +208,13 @@ export class CheckService {
     const { page, limit, skip } = resolvePagination(paginationQuery);
     const filter = this.buildFindAllFilter(paginationQuery, actor);
     const [data, total] = await Promise.all([
-      this.checkModel.find(filter).skip(skip).limit(limit).lean().exec(),
+      this.checkModel
+        .find(filter)
+        .select('-riskSealResponse')
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
       this.checkModel.countDocuments(filter),
     ]);
     return {

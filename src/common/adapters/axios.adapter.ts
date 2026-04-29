@@ -21,7 +21,18 @@ export class AxiosAdapter implements HttpAdapter{
             return data;
         } catch (error: any) {
             console.error('AxiosAdapter Post Error:', error?.response?.data || error);
-            throw new Error(error?.response?.data?.message || JSON.stringify(error?.response?.data) || 'This is an error - Check logs');
+            const d = error?.response?.data;
+            const piece =
+                (typeof d?.message === 'string' && d.message) ||
+                (Array.isArray(d?.message) && d.message.join('. ')) ||
+                (typeof d?.error === 'string' && d.error) ||
+                (typeof d === 'string' ? d : null);
+            const fallback =
+                piece ||
+                (d != null ? JSON.stringify(d) : null) ||
+                error?.message ||
+                'Error desconocido en petición HTTP';
+            throw new Error(fallback);
         }
     }
 
