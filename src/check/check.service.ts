@@ -14,6 +14,7 @@ import { AxiosAdapter } from 'src/common/adapters/axios.adapter';
 import { FootPrint } from './interfaces/footPrint.interface';
 import { InjectModel } from '@nestjs/mongoose';
 import { CounterId } from 'src/common/entities/counter-id.entity';
+import { User } from 'src/users/entities/user.entity';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import {
   buildPaginationMeta,
@@ -21,7 +22,6 @@ import {
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import { MembershipsService } from 'src/memberships/memberships.service';
-import { User } from 'src/users/entities/user.entity';
 import {
   buildRiskSealNewReportBody,
   phoneForRiskSeal,
@@ -37,6 +37,8 @@ export class CheckService {
     private readonly checkModel: Model<Check>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<any>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<User>,
     private readonly http: AxiosAdapter,
     private readonly membershipsService: MembershipsService,
   ) {}
@@ -55,32 +57,41 @@ export class CheckService {
     return isAdmin && !this.isSuperAdminActor(actor);
   }
 
-  private buildFindAllFilter(
-    paginationQuery: PaginationQueryDto,
-    actor: User,
+  private normalizeCompanyId(companyId: string | undefined | null): string {
+    if (companyId == null) return '';
+    return String(companyId).trim();
+  }
+
+  /** Usuarios de la empresa con rol operativo `user` (sin admin ni superAdmin). */
+  private normalCheckOperatorsUserFilter(
+    companyId: string,
   ): Record<string, unknown> {
-    const searchFilter = buildRegexOrFilter<Check>(paginationQuery.search, [
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { company: '__invalid_company__' };
+    const companyPart = /^\d+$/.test(cid)
+      ? { company: { $in: [cid, Number(cid)] } }
+      : { company: cid };
+    return {
+      ...companyPart,
+      isActive: { $ne: false },
+      $nor: [
+        { roles: 'admin' },
+        { roles: 'superAdmin' },
+        { roles: { $in: ['admin', 'superAdmin'] } },
+      ],
+      $or: [{ roles: { $in: ['user'] } }, { role: 'user' }],
+    };
+  }
+
+  private buildSearchFilter(
+    paginationQuery: PaginationQueryDto,
+  ): Record<string, unknown> {
+    return buildRegexOrFilter<Check>(paginationQuery.search, [
       'name',
       'lastName',
       'email',
       'mobile',
     ]);
-    let scope: Record<string, unknown> = {};
-    if (this.isSuperAdminActor(actor)) {
-      scope = {};
-    } else if (this.isCompanyAdminActor(actor) && actor.company) {
-      scope = { companyId: String(actor.company) };
-    } else {
-      scope = { createdByUserId: actor.id };
-    }
-
-    if (!Object.keys(searchFilter).length) {
-      return scope;
-    }
-    if (!Object.keys(scope).length) {
-      return searchFilter;
-    }
-    return { $and: [scope, searchFilter] };
   }
 
   private assertCanAccessCheck(
@@ -208,11 +219,46 @@ export class CheckService {
 
   async findAll(paginationQuery: PaginationQueryDto, actor: User) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
-    const filter = this.buildFindAllFilter(paginationQuery, actor);
+    const searchFilter = this.buildSearchFilter(paginationQuery);
+
+    let filter: Record<string, unknown>;
+
+    if (this.isSuperAdminActor(actor)) {
+      filter = Object.keys(searchFilter).length ? searchFilter : {};
+    } else if (this.isCompanyAdminActor(actor) && actor.company) {
+      const cid = this.normalizeCompanyId(actor.company);
+      const operators = await this.userModel
+        .find(this.normalCheckOperatorsUserFilter(cid))
+        .select('id')
+        .lean()
+        .exec();
+      const creatorIds = operators
+        .map((u) => String((u as { id?: string }).id))
+        .filter(Boolean);
+
+      if (creatorIds.length === 0) {
+        return {
+          data: [],
+          meta: buildPaginationMeta(0, page, limit),
+        };
+      }
+
+      const byCreators = { createdByUserId: { $in: creatorIds } };
+      filter = Object.keys(searchFilter).length
+        ? { $and: [byCreators, searchFilter] }
+        : byCreators;
+    } else {
+      const scope = { createdByUserId: actor.id };
+      filter = Object.keys(searchFilter).length
+        ? { $and: [scope, searchFilter] }
+        : scope;
+    }
+
     const [data, total] = await Promise.all([
       this.checkModel
         .find(filter)
         .select('-riskSealResponse')
+        .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean()
