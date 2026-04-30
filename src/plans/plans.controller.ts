@@ -24,6 +24,12 @@ export class PlansController {
     return this.plansService.create(dto);
   }
 
+  /** Catálogo público (landing). Debe declararse antes de `@Get(':id')`. */
+  @Get('public/catalog')
+  findPublicCatalog(@Query() paginationQuery: PaginationQueryDto) {
+    return this.plansService.findPublicCatalog(paginationQuery);
+  }
+
   @Get()
   @Auth(ValidRoles.superAdmin, ValidRoles.admin)
   findAll(

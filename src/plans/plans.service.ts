@@ -119,6 +119,39 @@ export class PlansService {
     };
   }
 
+  /**
+   * Catálogo para la landing y otros clientes públicos: planes activos y visibles en catálogo.
+   * Sin autenticación; no aplica exclusión por membresía vigente (eso solo aplica a admins logueados).
+   */
+  async findPublicCatalog(paginationQuery: PaginationQueryDto) {
+    const { page, limit, skip } = resolvePagination(paginationQuery);
+    const searchFilter = buildRegexOrFilter<Plan>(paginationQuery.search, [
+      'name',
+    ]);
+    const catalogClause: Record<string, unknown> = {
+      isVisible: true,
+      isActive: true,
+    };
+    const filter =
+      Object.keys(searchFilter).length > 0
+        ? { $and: [catalogClause, searchFilter] }
+        : catalogClause;
+
+    const [data, total] = await Promise.all([
+      this.planModel
+        .find(filter)
+        .sort({ monthlyPrice: 1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.planModel.countDocuments(filter),
+    ]);
+    return {
+      data: data.map((p) => this.toPublicPlan(p)),
+      meta: buildPaginationMeta(total, page, limit),
+    };
+  }
+
   async findOne(id: string) {
     const plan = await this.planModel.findOne({ id }).exec();
     if (!plan) {
