@@ -17,6 +17,7 @@ import { UsersModule } from './users/users.module';
 import { PlansModule } from './plans/plans.module';
 import { MembershipsModule } from './memberships/memberships.module';
 import { ContactDemoModule } from './contact-demo/contact-demo.module';
+import { SuperAdminDashboardModule } from './super-admin-dashboard/super-admin-dashboard.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ContactDemoModule } from './contact-demo/contact-demo.module';
     PlansModule,
     MembershipsModule,
     ContactDemoModule,
+    SuperAdminDashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

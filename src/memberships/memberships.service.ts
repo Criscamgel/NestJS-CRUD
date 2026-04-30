@@ -474,6 +474,31 @@ export class MembershipsService {
     return { message: 'Membresía suspendida exitosamente' };
   }
 
+  async resume(id: string) {
+    const m = await this.membershipModel.findOne({ id }).exec();
+    if (!m) {
+      throw new NotFoundException(`Membresía con id ${id} no encontrada`);
+    }
+    if (m.status !== MembershipStatus.SUSPENDED) {
+      throw new BadRequestException(
+        'Solo se pueden reactivar membresías suspendidas',
+      );
+    }
+    const now = new Date();
+    if (new Date(m.expiresAt) <= now) {
+      throw new BadRequestException(
+        'La membresía está vencida. Crea una nueva contratación.',
+      );
+    }
+    m.status = MembershipStatus.ACTIVE;
+    m.deactivatedAt = undefined;
+    m.deactivatedBy = undefined;
+    m.deactivationReason = undefined;
+    await m.save();
+    await this.reactivateNormalUsersForCompany(String(m.companyId));
+    return { message: 'Membresía reactivada exitosamente' };
+  }
+
   async getActiveMembershipForCompany(
     companyId: string,
   ): Promise<Membership | null> {

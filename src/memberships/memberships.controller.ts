@@ -62,4 +62,10 @@ export class MembershipsController {
   ) {
     return this.membershipsService.suspend(id, actor.id, reason);
   }
+
+  @Patch(':id/resume')
+  @Auth(ValidRoles.superAdmin)
+  resume(@Param('id') id: string) {
+    return this.membershipsService.resume(id);
+  }
 }
