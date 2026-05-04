@@ -24,6 +24,7 @@ export const JoiValidationSchema = Joi.object({
     /** Alias opcional del mismo valor (documentación previa). */
     BOLD_API_LINK_URI: Joi.string().uri().optional(),
     BOLD_API_KEY: Joi.string().optional().allow(''),
+    /** Bold Pagos — opcionales para no bloquear entornos sin pasarela */
     BOLD_SECRET_KEY: Joi.string().optional().allow(''),
     /** URL absoluta de la landing (retorno ?pagoBold=1) */
     PUBLIC_LANDING_URL: Joi.string().uri().optional().allow(''),
