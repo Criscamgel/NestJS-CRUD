@@ -16,6 +16,14 @@ export const JoiValidationSchema = Joi.object({
     MAILER_SECRET_KEY: Joi.string().required(),
     /** Destino del formulario landing (por defecto hola@cheky.co en código) */
     CONTACT_DEMO_INBOX: Joi.string().email().optional(),
+    /** Bold Pagos — opcionales para no bloquear entornos sin pasarela */
+    BOLD_SECRET_KEY: Joi.string().optional().allow(''),
+    BOLD_API_KEY: Joi.string().optional().allow(''),
+    BOLD_API_LINK_URL: Joi.string().uri().optional().allow(''),
+    /** URL absoluta de la landing (retorno ?pagoBold=1) */
+    PUBLIC_LANDING_URL: Joi.string().uri().optional().allow(''),
+    LANDING_URL: Joi.string().uri().optional().allow(''),
+    DEBUG_BOLD_WEBHOOK: Joi.string().valid('true', 'false').optional(),
     // Seed - SuperAdmins (opcionales para no bloquear el arranque)
     SEED_ADMIN1_EMAIL: Joi.string().email().optional(),
     SEED_ADMIN1_DOCUMENT: Joi.string().optional(),
