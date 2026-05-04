@@ -80,7 +80,9 @@ function buildCorsOriginFn(allowed: string[]) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+  });
 
   /**
    * Orden recomendado en Nest: prefijo global antes de CORS.
