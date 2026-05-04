@@ -4,6 +4,8 @@ export const JoiValidationSchema = Joi.object({
     CORS_ORIGINS: Joi.string().optional(),
     /** WebApp (SPA): enlaces en correos de bienvenida y recuperación de contraseña. */
     PUBLIC_WEB_APP_URL: Joi.string().uri().optional(),
+    /** Landing pública (Vite): retorno después del pago Bold (checkout público). */
+    PUBLIC_LANDING_URL: Joi.string().uri().optional(),
     FRONTEND_URL: Joi.string().uri().optional(),
     MONGODB: Joi.required(),
     JWT_SECRET: Joi.string().required(),
@@ -16,6 +18,12 @@ export const JoiValidationSchema = Joi.object({
     MAILER_SECRET_KEY: Joi.string().required(),
     /** Destino del formulario landing (por defecto hola@cheky.co en código) */
     CONTACT_DEMO_INBOX: Joi.string().email().optional(),
+    /** Base URL Bold (API Link), sin barra final. Nombre que usa el API en producción y el demo oficial. */
+    BOLD_API_LINK_URL: Joi.string().uri().optional(),
+    /** Alias opcional del mismo valor (documentación previa). */
+    BOLD_API_LINK_URI: Joi.string().uri().optional(),
+    BOLD_API_KEY: Joi.string().optional(),
+    BOLD_SECRET_KEY: Joi.string().optional(),
     // Seed - SuperAdmins (opcionales para no bloquear el arranque)
     SEED_ADMIN1_EMAIL: Joi.string().email().optional(),
     SEED_ADMIN1_DOCUMENT: Joi.string().optional(),
