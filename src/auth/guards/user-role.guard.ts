@@ -23,7 +23,12 @@ export class UserRoleGuard implements CanActivate {
 
     if (!user) throw new BadRequestException('Usuario no encontrado');
 
-    for (const role of user.roles) {
+    const fromArray = Array.isArray(user.roles) ? user.roles : [];
+    const legacy = (user as { role?: string }).role?.trim();
+    const effectiveRoles =
+      legacy && !fromArray.includes(legacy) ? [...fromArray, legacy] : [...fromArray];
+
+    for (const role of effectiveRoles) {
       if (validRoles.includes(role)) {
         return true;
       }

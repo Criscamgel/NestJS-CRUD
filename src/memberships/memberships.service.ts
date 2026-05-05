@@ -582,6 +582,7 @@ export class MembershipsService {
       return {
         hasActiveMembership: false,
         planName: null as string | null,
+        membershipExpiresAt: null as string | null,
         daysUntilExpiry: null as number | null,
         checksUsedInPeriod: 0,
         checksPendingMonthly: null as number | null,
@@ -611,6 +612,8 @@ export class MembershipsService {
     return {
       hasActiveMembership: true,
       planName,
+      membershipExpiresAt:
+        m.expiresAt instanceof Date ? m.expiresAt.toISOString() : String(m.expiresAt),
       daysUntilExpiry,
       checksUsedInPeriod: m.checksUsedInPeriod ?? 0,
       checksPendingMonthly,
