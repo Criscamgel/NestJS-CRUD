@@ -40,7 +40,10 @@ export class BoldPaymentService {
   ) {}
 
   private getSecretKey(): string {
-    const k = this.configService.get<string>('BOLD_SECRET_KEY')?.trim() ?? '';
+    const k =
+      this.configService.get<string>('boldSecretKey')?.trim() ||
+      this.configService.get<string>('BOLD_SECRET_KEY')?.trim() ||
+      '';
     if (!k) {
       throw new ServiceUnavailableException(
         'Pagos Bold no configurados (BOLD_SECRET_KEY).',
@@ -50,7 +53,10 @@ export class BoldPaymentService {
   }
 
   private getApiKey(): string {
-    const k = this.configService.get<string>('BOLD_API_KEY')?.trim() ?? '';
+    const k =
+      this.configService.get<string>('boldApiKey')?.trim() ||
+      this.configService.get<string>('BOLD_API_KEY')?.trim() ||
+      '';
     if (!k) {
       throw new ServiceUnavailableException(
         'Pagos Bold no configurados (BOLD_API_KEY).',
@@ -59,19 +65,31 @@ export class BoldPaymentService {
     return k;
   }
 
-  private getLinkApiBase(): string {
-    const u = this.configService.get<string>('BOLD_API_LINK_URL')?.trim() ?? '';
-    if (!u) {
+  /**
+   * Prefijo oficial API Link (`…/online/link/v1`).
+   * Acepta en env solo el host (recomendado) o la URL ya terminada en `/online/link/v1`.
+   * @see https://developers.bold.co/pagos-en-linea/api-integration
+   */
+  private resolveBoldOnlineLinkPrefix(): string {
+    const raw =
+      this.configService.get<string>('boldApiLinkBaseUrl')?.trim() ||
+      this.configService.get<string>('BOLD_API_LINK_URL')?.trim() ||
+      this.configService.get<string>('BOLD_API_LINK_URI')?.trim() ||
+      '';
+    if (!raw) {
       throw new ServiceUnavailableException(
         'Pagos Bold no configurados (BOLD_API_LINK_URL).',
       );
     }
-    return u.replace(/\/$/, '');
+    const trimmed = raw.replace(/\/+$/, '');
+    const suffix = '/online/link/v1';
+    return trimmed.endsWith(suffix) ? trimmed : `${trimmed}${suffix}`;
   }
 
   private callbackBaseForSource(source: BoldCheckoutSource): string {
     if (source === 'landing') {
       const u =
+        this.configService.get<string>('publicLandingUrl')?.trim() ||
         this.configService.get<string>('PUBLIC_LANDING_URL')?.trim() ||
         this.configService.get<string>('LANDING_URL')?.trim() ||
         '';
@@ -83,6 +101,8 @@ export class BoldPaymentService {
       return u.replace(/\/$/, '');
     }
     const u =
+      this.configService.get<string>('publicWebAppUrl')?.trim() ||
+      this.configService.get<string>('frontendUrl')?.trim() ||
       this.configService.get<string>('PUBLIC_WEB_APP_URL')?.trim() ||
       this.configService.get<string>('FRONTEND_URL')?.trim() ||
       '';
@@ -107,7 +127,7 @@ export class BoldPaymentService {
     description: string;
     callbackUrl: string;
   }): Promise<{ url: string; payment_link: string }> {
-    const url = this.getLinkApiBase();
+    const url = this.resolveBoldOnlineLinkPrefix();
     const apiKey = this.getApiKey();
     const nowNs = Date.now() * 1e6;
     const expNs = nowNs + 10 * 60 * 1e9;
@@ -157,15 +177,18 @@ export class BoldPaymentService {
   }
 
   async fetchBoldPaymentStatus(paymentLinkId: string): Promise<unknown> {
-    const base = this.getLinkApiBase();
+    const base = this.resolveBoldOnlineLinkPrefix();
     const apiKey = this.getApiKey();
-    const { data } = await axios.get(`${base}/${encodeURIComponent(paymentLinkId)}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `x-api-key ${apiKey}`,
+    const { data } = await axios.get(
+      `${base}/${encodeURIComponent(paymentLinkId)}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `x-api-key ${apiKey}`,
+        },
+        timeout: 25_000,
       },
-      timeout: 25_000,
-    });
+    );
     return data;
   }
 
