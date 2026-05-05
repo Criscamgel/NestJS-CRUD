@@ -4,7 +4,7 @@ export const JoiValidationSchema = Joi.object({
     CORS_ORIGINS: Joi.string().optional(),
     /** WebApp (SPA): enlaces en correos de bienvenida y recuperación de contraseña. */
     PUBLIC_WEB_APP_URL: Joi.string().uri().optional(),
-    /** Landing pública (Vite): retorno después del pago Bold (checkout público). */
+    /** Landing pública (Vite): URL absoluta; retorno tras pago Bold (p. ej. ?pagoBold=1). */
     PUBLIC_LANDING_URL: Joi.string().uri().optional().allow(''),
     FRONTEND_URL: Joi.string().uri().optional(),
     MONGODB: Joi.required(),
