@@ -121,24 +121,40 @@ export class BoldPaymentService {
     return crypto.createHash('sha256').update(data, 'utf8').digest('hex');
   }
 
+  /**
+   * Bold documenta la expiración en nanosegundos; ese valor supera MAX_SAFE_INTEGER y se corrompe
+   * como `number` IEEE-754 → la API puede ignorar `amount` u operar como monto abierto (OPEN).
+   */
+  private boldLinkExpirationNanosAsString(): string {
+    const ms = BigInt(Date.now());
+    const tenMinutesNs = BigInt(10 * 60) * BigInt(1_000_000_000);
+    return (ms * BigInt(1_000_000) + tenMinutesNs).toString();
+  }
+
   private async callBoldCreateLink(params: {
     amount: number;
     currency: string;
     description: string;
     callbackUrl: string;
+    reference: string;
   }): Promise<{ url: string; payment_link: string }> {
     const url = this.resolveBoldOnlineLinkPrefix();
     const apiKey = this.getApiKey();
-    const nowNs = Date.now() * 1e6;
-    const expNs = nowNs + 10 * 60 * 1e9;
+    const totalAmount = Math.round(Number(params.amount));
+    if (totalAmount < 1 || !Number.isFinite(totalAmount)) {
+      throw new BadRequestException('Monto del cobro inválido.');
+    }
+
+    /** Preferimos CLOSE con referencia estable para conciliación (además de texto legible en Bold). */
     const body = {
-      amount_type: params.amount > 0 ? 'CLOSE' : 'OPEN',
+      amount_type: 'CLOSE' as const,
       amount: {
         currency: params.currency || 'COP',
-        total_amount: params.amount,
+        total_amount: totalAmount,
       },
-      description: params.description,
-      expiration_date: expNs,
+      reference: params.reference,
+      description: params.description.slice(0, 500),
+      expiration_date: this.boldLinkExpirationNanosAsString(),
       callback_url: params.callbackUrl,
     };
     try {
@@ -232,12 +248,16 @@ export class BoldPaymentService {
     const ref = `CHEKY-LAND-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('landing');
     const callbackUrl = `${callbackBase}/?pagoBold=1`;
+    const amountLabel = `${amount.toLocaleString('es-CO')} ${currency}`.trim();
+    const boldDescription =
+      `${plan.name} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
 
     const bold = await this.callBoldCreateLink({
       amount,
       currency,
-      description: ref,
+      description: boldDescription,
       callbackUrl,
+      reference: ref,
     });
 
     await this.intentModel.create({
@@ -283,12 +303,16 @@ export class BoldPaymentService {
     const ref = `CHEKY-CO-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('company_admin');
     const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
+    const amountLabel = `${amount.toLocaleString('es-CO')} ${currency}`.trim();
+    const boldDescription =
+      `Cheky empresa — ${plan.name} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
 
     const bold = await this.callBoldCreateLink({
       amount,
       currency,
-      description: ref,
+      description: boldDescription,
       callbackUrl,
+      reference: ref,
     });
 
     await this.intentModel.create({
