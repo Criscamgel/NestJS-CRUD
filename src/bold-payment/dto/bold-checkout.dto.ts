@@ -1,9 +1,8 @@
-import { IsNotEmpty, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class BoldStartCheckoutDto {
   @IsString()
   @IsNotEmpty()
-  @Matches(/^\d+$/, { message: 'planId debe ser el id numérico del plan' })
   planId!: string;
 }
 

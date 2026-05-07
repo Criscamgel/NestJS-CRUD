@@ -332,6 +332,54 @@ export function getEmailLogoAttachment():
 }
 
 // ─────────────────────────────────────────────
+// Template: Landing — enlace seguro para crear admin tras pago Bold
+// ─────────────────────────────────────────────
+export function landingAdminOnboardingEmailTemplate(onboardingLink: string): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const content = `
+    <h2 style="
+      margin: 0 0 8px;
+      color: ${BRAND.neutral};
+      font-size: 22px;
+      font-weight: 700;
+    ">Completa el registro de tu empresa</h2>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.7;
+    ">
+      Confirmamos tu pago. Para crear tu cuenta de <strong>administrador</strong> y activar la membresía contratada,
+      haz clic en el botón. Solo quien tenga acceso a este correo podrá usar el enlace.
+    </p>
+
+    ${ctaButton('Crear mi cuenta y empresa', onboardingLink)}
+
+    <p style="
+      margin: 0 0 6px;
+      color: ${BRAND.textMuted};
+      font-size: 13px;
+      line-height: 1.6;
+    ">
+      Si el botón no funciona, copia y pega el siguiente enlace en tu navegador:
+    </p>
+    <p style="
+      margin: 0 0 24px;
+      word-break: break-all;
+    ">
+      <a href="${onboardingLink}"
+        style="color: ${BRAND.primary}; font-size: 12px; text-decoration: underline;"
+      >${onboardingLink}</a>
+    </p>
+
+    ${infoBox('Este enlace es personal, de un solo uso y caduca en unos días. Después de registrarte podrás iniciar sesión en la plataforma Cheky con el correo y la contraseña que elijas.')}
+  `;
+
+  return emailLayout(content, showLogo);
+}
+
+// ─────────────────────────────────────────────
 // Template: Landing — solicitud de demo (contacto)
 // ─────────────────────────────────────────────
 export function contactDemoEmailTemplate(payload: {

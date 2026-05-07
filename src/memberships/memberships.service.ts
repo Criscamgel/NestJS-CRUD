@@ -328,6 +328,79 @@ export class MembershipsService {
     };
   }
 
+  /**
+   * Primera membresía tras registro post-pago en landing (sin actor JWT).
+   * Solo debe invocarse desde el flujo verificado de onboarding Bold.
+   */
+  async createMembershipAfterPaidLanding(companyId: string, planId: string) {
+    const companyIdNorm = this.normalizeCompanyId(companyId);
+    if (!companyIdNorm) {
+      throw new BadRequestException('companyId inválido');
+    }
+    const company = await this.companyModel
+      .findOne({ id: companyIdNorm })
+      .exec();
+    if (!company) {
+      throw new NotFoundException(
+        `Compañía con id ${companyIdNorm} no encontrada`,
+      );
+    }
+    const plan = await this.plansService.findOneById(planId);
+    if (!plan) {
+      throw new NotFoundException(`Plan con id ${planId} no encontrado`);
+    }
+    if (!plan.isActive) {
+      throw new BadRequestException('El plan no está activo');
+    }
+    if (plan.isVisible === false) {
+      throw new BadRequestException('Este plan no está disponible para contratación.');
+    }
+    const maxChecksForPeriodSnapshot = plan.maxChecksPerMonth * plan.durationMonths;
+    if (maxChecksForPeriodSnapshot < 1) {
+      throw new BadRequestException('Configuración de plan inválida');
+    }
+    const systemActorId = 'landing_onboarding';
+    const startedAt = new Date();
+    const expiresAt = addMonths(startedAt, plan.durationMonths);
+    const mk = monthKey(startedAt);
+    await this.membershipModel.updateMany(
+      {
+        ...this.companyIdFilter(companyIdNorm),
+        status: MembershipStatus.ACTIVE,
+      },
+      {
+        $set: {
+          status: MembershipStatus.CANCELLED,
+          deactivatedAt: new Date(),
+          deactivatedBy: systemActorId,
+          deactivationReason: 'replaced_by_new_membership',
+        },
+      },
+    );
+    const counter = await this.counterIdModel.findByIdAndUpdate(
+      'memberships',
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true },
+    );
+    const membership = await this.membershipModel.create({
+      id: counter.seq.toString(),
+      companyId: companyIdNorm,
+      planId: String(plan.id),
+      status: MembershipStatus.ACTIVE,
+      startedAt,
+      expiresAt,
+      durationMonthsSnapshot: plan.durationMonths,
+      maxUsersSnapshot: plan.maxUsers,
+      maxChecksPerMonthSnapshot: plan.maxChecksPerMonth,
+      maxChecksForPeriodSnapshot,
+      checksUsedInCurrentMonth: 0,
+      currentMonthKey: mk,
+      checksUsedInPeriod: 0,
+    });
+    await this.reactivateNormalUsersForCompany(companyIdNorm);
+    return { message: 'Membresía creada exitosamente', membership };
+  }
+
   async findAll(paginationQuery: PaginationQueryDto) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
     const filter = buildRegexOrFilter<Membership>(paginationQuery.search, [

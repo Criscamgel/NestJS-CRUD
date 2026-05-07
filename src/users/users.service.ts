@@ -178,6 +178,67 @@ export class UsersService {
     }
   }
 
+  /**
+   * Alta de admin de empresa tras pago en landing (contraseña ya definida; sin correo de bienvenida).
+   */
+  async createLandingPaidAdminUser(params: {
+    email: string;
+    document: string;
+    name: string;
+    lastName: string;
+    password: string;
+    companyId: string;
+  }) {
+    const emailNorm = params.email.toLowerCase().trim();
+    const dupEmail = await this.userModel.findOne({ email: emailNorm }).lean();
+    if (dupEmail) {
+      throw new ConflictException('Ya existe un usuario con este correo');
+    }
+    const docNorm = params.document.trim();
+    const dupDoc = await this.userModel.findOne({ document: docNorm }).lean();
+    if (dupDoc) {
+      throw new ConflictException('Ya existe un usuario con este documento');
+    }
+    const companyExists = await this.companyModel.findOne({ id: params.companyId });
+    if (!companyExists) {
+      throw new NotFoundException(
+        `La compañía con id ${params.companyId} no existe`,
+      );
+    }
+    try {
+      const counter = await this.counterIdModel.findByIdAndUpdate(
+        'users',
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true },
+      );
+      const id = counter.seq.toString();
+      const user = await this.userModel.create({
+        id,
+        email: emailNorm,
+        document: docNorm,
+        name: params.name.trim(),
+        lastName: params.lastName.trim(),
+        password: bcrypt.hashSync(params.password, 10),
+        roles: ['admin'],
+        company: params.companyId,
+        isActive: true,
+      });
+      const { password: _p, __v, _id, ...safeUser } = user.toObject();
+      return { user: safeUser };
+    } catch (error: unknown) {
+      if (isMongoDuplicateKeyError(error)) {
+        const field = error?.keyValue
+          ? Object.keys(error.keyValue)[0]
+          : 'campo';
+        throw new ConflictException(`Ya existe un usuario con ese ${field}`);
+      }
+      if (error instanceof Error) {
+        throw new BadRequestException(error.message ?? 'Error al crear usuario');
+      }
+      throw new BadRequestException('Error desconocido al crear usuario');
+    }
+  }
+
   async findAllUsers(paginationQuery: PaginationQueryDto, requester: User) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
     const requesterRoles = requester.roles || [];

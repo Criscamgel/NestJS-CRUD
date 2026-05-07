@@ -35,6 +35,13 @@ export class BoldCheckoutIntent extends Document {
 
   @Prop({ default: 'pending' })
   status!: BoldCheckoutIntentStatus;
+
+  /** Email normalizado indicado en la landing tras pago (para el enlace de registro admin). */
+  @Prop()
+  landingOnboardingEmail?: string;
+
+  @Prop()
+  landingOnboardingCompletedAt?: Date;
 }
 
 export const BoldCheckoutIntentSchema =

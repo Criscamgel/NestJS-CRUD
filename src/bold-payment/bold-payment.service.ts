@@ -157,6 +157,9 @@ export class BoldPaymentService {
       expiration_date: this.boldLinkExpirationNanosAsString(),
       callback_url: params.callbackUrl,
     };
+    this.logger.log(
+      `Bold create link: reference=${params.reference} total_amount=${totalAmount} currency=${params.currency} amount_type=CLOSE`,
+    );
     try {
       const { data } = await axios.post<{
         payload?: { url?: string; payment_link?: string };
@@ -246,6 +249,9 @@ export class BoldPaymentService {
     const amount = this.computeChargeAmount(plan);
     const currency = plan.currency || 'COP';
     const ref = `CHEKY-LAND-${crypto.randomUUID()}`;
+    this.logger.log(
+      `Bold landing checkout start: planId=${String(plan.id)} planName=${plan.name} monthlyPrice=${plan.monthlyPrice} durationMonths=${plan.durationMonths} chargeAmount=${amount} currency=${currency} ref=${ref}`,
+    );
     const callbackBase = this.callbackBaseForSource('landing');
     const callbackUrl = `${callbackBase}/?pagoBold=1`;
     const amountLabel = `${amount.toLocaleString('es-CO')} ${currency}`.trim();
