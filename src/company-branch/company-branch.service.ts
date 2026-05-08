@@ -92,11 +92,6 @@ export class CompanyBranchService {
   }
 
   async create(companyId: string, dto: CreateCompanyBranchDto, actor: User) {
-    if (!this.isSuper(actor)) {
-      throw new ForbiddenException(
-        'Solo el super administrador puede crear sedes desde el panel de empresa.',
-      );
-    }
     this.assertManageCompany(actor, companyId);
     await this.assertCompanyExists(companyId);
 
