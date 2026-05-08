@@ -10,10 +10,12 @@ import { CompanyBranchService } from './company-branch.service';
 import { CompanyBranchController } from './company-branch.controller';
 import { CompanyBranchCatalogController } from './company-branch-catalog.controller';
 import { AuthModule } from 'src/auth/auth.module';
+import { MembershipsModule } from 'src/memberships/memberships.module';
 
 @Module({
   imports: [
     forwardRef(() => AuthModule),
+    MembershipsModule,
     MongooseModule.forFeature([
       { name: CompanyBranch.name, schema: CompanyBranchSchema },
       { name: Company.name, schema: CompanySchema },

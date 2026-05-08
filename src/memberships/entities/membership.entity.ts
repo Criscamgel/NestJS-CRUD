@@ -28,6 +28,10 @@ export class Membership extends Document {
   @Prop({ required: true, min: 1 })
   maxUsersSnapshot!: number;
 
+  /** Tope de sedes según plan al contratar / sincronizar (0 = ninguna). */
+  @Prop({ min: 0 })
+  maxBranchesSnapshot?: number;
+
   @Prop({ required: true, min: 1 })
   maxChecksPerMonthSnapshot!: number;
 

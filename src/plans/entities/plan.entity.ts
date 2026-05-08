@@ -13,6 +13,10 @@ export class Plan extends Document {
   @Prop({ required: true, min: 1 })
   maxUsers!: number;
 
+  /** Máximo de sedes por empresa (0 = ninguna sede permitida). */
+  @Prop({ required: true, min: 0, default: 0 })
+  maxBranches!: number;
+
   /** Máximo de checks por mes calendario (YYYY-MM). */
   @Prop({ required: true, min: 1 })
   maxChecksPerMonth!: number;

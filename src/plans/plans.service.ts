@@ -43,6 +43,7 @@ export class PlansService {
         id: counter.seq.toString(),
         name: dto.name,
         maxUsers: dto.maxUsers,
+        maxBranches: dto.maxBranches ?? 0,
         maxChecksPerMonth: dto.maxChecks,
         durationMonths: dto.durationMonths,
         monthlyPrice: dto.monthlyPrice,
@@ -168,6 +169,7 @@ export class PlansService {
     const payload: Record<string, unknown> = {};
     if (dto.name !== undefined) payload.name = dto.name;
     if (dto.maxUsers !== undefined) payload.maxUsers = dto.maxUsers;
+    if (dto.maxBranches !== undefined) payload.maxBranches = dto.maxBranches;
     if (dto.maxChecks !== undefined) payload.maxChecksPerMonth = dto.maxChecks;
     if (dto.durationMonths !== undefined) payload.durationMonths = dto.durationMonths;
     if (dto.monthlyPrice !== undefined) payload.monthlyPrice = dto.monthlyPrice;
@@ -229,8 +231,14 @@ export class PlansService {
     delete o.maxChecksPerMonth;
     const isVisible =
       o.isVisible === undefined ? true : Boolean(o.isVisible);
+    const maxBranchesRaw = o.maxBranches;
+    const maxBranches =
+      maxBranchesRaw !== undefined && maxBranchesRaw !== null
+        ? Number(maxBranchesRaw)
+        : 0;
     return {
       ...o,
+      maxBranches,
       maxChecks: maxChecksPerMonth,
       isVisible,
     };
