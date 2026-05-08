@@ -19,6 +19,7 @@ import { MembershipsModule } from './memberships/memberships.module';
 import { ContactDemoModule } from './contact-demo/contact-demo.module';
 import { SuperAdminDashboardModule } from './super-admin-dashboard/super-admin-dashboard.module';
 import { BoldPaymentModule } from './bold-payment/bold-payment.module';
+import { CompanyBranchModule } from './company-branch/company-branch.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { BoldPaymentModule } from './bold-payment/bold-payment.module';
     ContactDemoModule,
     SuperAdminDashboardModule,
     BoldPaymentModule,
+    CompanyBranchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

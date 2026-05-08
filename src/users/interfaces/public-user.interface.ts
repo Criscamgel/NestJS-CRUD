@@ -10,6 +10,9 @@ export interface PublicUser {
   document: string;
   roles?: string[];
   company?: string;
+  branchId?: string;
+  /** Presente solo en algunos listados enriquecidos. */
+  branchName?: string;
   isActive: boolean;
   lastAccessAt?: string;
 }

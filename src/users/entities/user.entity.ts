@@ -55,6 +55,10 @@ export class User extends Document {
     })
     company?: string;
 
+    /** Sede (CompanyBranch.id) dentro de la misma empresa. */
+    @Prop()
+    branchId?: string;
+
     @Prop({
         default: true
     })
