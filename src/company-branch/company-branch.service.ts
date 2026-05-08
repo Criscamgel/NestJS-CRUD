@@ -19,6 +19,7 @@ import {
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import type { User } from 'src/users/entities/user.entity';
 import { BranchCatalogQueryDto } from './dto/branch-catalog-query.dto';
+import { MembershipsService } from 'src/memberships/memberships.service';
 
 @Injectable()
 export class CompanyBranchService {
@@ -29,6 +30,7 @@ export class CompanyBranchService {
     private readonly companyModel: Model<Company>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<CounterId>,
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   private isSuper(actor: User): boolean {
@@ -94,6 +96,7 @@ export class CompanyBranchService {
   async create(companyId: string, dto: CreateCompanyBranchDto, actor: User) {
     this.assertManageCompany(actor, companyId);
     await this.assertCompanyExists(companyId);
+    await this.membershipsService.assertCanAddBranch(companyId);
 
     const counter = await this.counterIdModel.findByIdAndUpdate(
       'company_branches',

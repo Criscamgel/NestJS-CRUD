@@ -9,6 +9,10 @@ import { MembershipsController } from './memberships.controller';
 import { AuthModule } from 'src/auth/auth.module';
 import { CommonModule } from 'src/common/common.module';
 import { PlansModule } from 'src/plans/plans.module';
+import {
+  CompanyBranch,
+  CompanyBranchSchema,
+} from 'src/company-branch/entities/company-branch.entity';
 
 @Module({
   imports: [
@@ -20,6 +24,7 @@ import { PlansModule } from 'src/plans/plans.module';
       { name: CounterId.name, schema: CounterIdSchema },
       { name: Company.name, schema: CompanySchema },
       { name: User.name, schema: UserSchema },
+      { name: CompanyBranch.name, schema: CompanyBranchSchema },
     ]),
   ],
   controllers: [MembershipsController],

@@ -21,6 +21,13 @@ export class CreatePlanDto {
   @IsPositive()
   maxUsers!: number;
 
+  /** Sedes permitidas por empresa (0 permitido). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxBranches?: number;
+
   /** Checks permitidos por mes calendario. */
   @Type(() => Number)
   @IsInt()

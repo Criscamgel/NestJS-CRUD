@@ -16,6 +16,7 @@ import { Company } from 'src/company/entities/company.entity';
 import { User } from 'src/users/entities/user.entity';
 import { Plan } from 'src/plans/entities/plan.entity';
 import { PlansService } from 'src/plans/plans.service';
+import { CompanyBranch } from 'src/company-branch/entities/company-branch.entity';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import {
   buildPaginationMeta,
@@ -37,6 +38,7 @@ function addMonths(date: Date, months: number): Date {
 
 type MembershipPlanSnapshotSet = {
   maxUsersSnapshot: number;
+  maxBranchesSnapshot: number;
   maxChecksPerMonthSnapshot: number;
   durationMonthsSnapshot: number;
   maxChecksForPeriodSnapshot: number;
@@ -51,6 +53,8 @@ export class MembershipsService {
     private readonly companyModel: Model<Company>,
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
+    @InjectModel(CompanyBranch.name)
+    private readonly companyBranchModel: Model<CompanyBranch>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<CounterId>,
     @Inject(forwardRef(() => PlansService))
@@ -82,6 +86,16 @@ export class MembershipsService {
     return { company: cid };
   }
 
+  /** `companyId` en colección de sedes (string / número legacy). */
+  private branchCompanyIdFilter(companyId: string): Record<string, unknown> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { companyId: '__invalid_company__' };
+    if (/^\d+$/.test(cid)) {
+      return { companyId: { $in: [cid, Number(cid)] } };
+    }
+    return { companyId: cid };
+  }
+
   /** Coincide `planId` en membresías (string / número legacy). */
   private planIdFilter(planId: string): Record<string, unknown> {
     const pid = String(planId ?? '').trim();
@@ -92,12 +106,30 @@ export class MembershipsService {
     return { planId: pid };
   }
 
+  /**
+   * Cupo de sedes según plan. Si el documento no tiene `maxBranches` (planes anteriores),
+   * se usa un tope alto para no bloquear operación hasta que el plan se vuelva a guardar.
+   */
+  private static readonly LEGACY_PLAN_BRANCH_CAP = 999_999;
+
+  private maxBranchesQuotaFromPlan(plan: Plan | null): number {
+    if (!plan) {
+      return MembershipsService.LEGACY_PLAN_BRANCH_CAP;
+    }
+    const raw = (plan as unknown as { maxBranches?: number | null }).maxBranches;
+    if (raw !== undefined && raw !== null && !Number.isNaN(Number(raw))) {
+      return Math.max(0, Math.floor(Number(raw)));
+    }
+    return MembershipsService.LEGACY_PLAN_BRANCH_CAP;
+  }
+
   /** Snapshots de membresía alineados con la definición actual del plan en catálogo. */
   private snapshotSetFromPlan(plan: Plan): MembershipPlanSnapshotSet | null {
     const maxPeriod = plan.maxChecksPerMonth * plan.durationMonths;
     if (maxPeriod < 1) return null;
     return {
       maxUsersSnapshot: plan.maxUsers,
+      maxBranchesSnapshot: this.maxBranchesQuotaFromPlan(plan),
       maxChecksPerMonthSnapshot: plan.maxChecksPerMonth,
       durationMonthsSnapshot: plan.durationMonths,
       maxChecksForPeriodSnapshot: maxPeriod,
@@ -110,6 +142,7 @@ export class MembershipsService {
   ): boolean {
     return (
       m.maxUsersSnapshot === snap.maxUsersSnapshot &&
+      (m.maxBranchesSnapshot ?? -1) === snap.maxBranchesSnapshot &&
       m.maxChecksPerMonthSnapshot === snap.maxChecksPerMonthSnapshot &&
       m.durationMonthsSnapshot === snap.durationMonthsSnapshot &&
       m.maxChecksForPeriodSnapshot === snap.maxChecksForPeriodSnapshot
@@ -313,6 +346,7 @@ export class MembershipsService {
       expiresAt,
       durationMonthsSnapshot: plan.durationMonths,
       maxUsersSnapshot: plan.maxUsers,
+      maxBranchesSnapshot: this.maxBranchesQuotaFromPlan(plan),
       maxChecksPerMonthSnapshot: plan.maxChecksPerMonth,
       maxChecksForPeriodSnapshot,
       checksUsedInCurrentMonth: 0,
@@ -391,6 +425,7 @@ export class MembershipsService {
       expiresAt,
       durationMonthsSnapshot: plan.durationMonths,
       maxUsersSnapshot: plan.maxUsers,
+      maxBranchesSnapshot: this.maxBranchesQuotaFromPlan(plan),
       maxChecksPerMonthSnapshot: plan.maxChecksPerMonth,
       maxChecksForPeriodSnapshot,
       checksUsedInCurrentMonth: 0,
@@ -430,6 +465,49 @@ export class MembershipsService {
    * Valida cupo de usuarios normales (rol `user`) contra la membresía activa.
    * No aplica a admins ni superAdmins.
    */
+  /**
+   * Límite de sedes del plan (membresía activa). Usa snapshot; si falta, el plan vigente.
+   */
+  private resolveMaxBranchesLimit(
+    m: Membership,
+    plan: Plan | null,
+  ): number {
+    if (m.maxBranchesSnapshot !== undefined && m.maxBranchesSnapshot !== null) {
+      return Number(m.maxBranchesSnapshot);
+    }
+    return this.maxBranchesQuotaFromPlan(plan);
+  }
+
+  /**
+   * No crear sede si ya se alcanzó el tope del plan contratado (total de sedes de la empresa).
+   */
+  async assertCanAddBranch(companyId: string): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) {
+      throw new BadRequestException('companyId inválido');
+    }
+
+    const m = await this.getActiveMembershipForCompany(cid);
+    if (!m) {
+      throw new ForbiddenException(
+        'La compañía no tiene una membresía activa. Contrata un plan para crear sedes.',
+      );
+    }
+
+    const plan = await this.plansService.findOneById(m.planId);
+    const limit = this.resolveMaxBranchesLimit(m, plan);
+
+    const branchCount = await this.companyBranchModel.countDocuments(
+      this.branchCompanyIdFilter(cid),
+    );
+
+    if (branchCount >= limit) {
+      throw new ForbiddenException(
+        `Se alcanzó el límite de sedes del plan (${limit}). Amplía el plan o elimina sedes existentes para crear una nueva.`,
+      );
+    }
+  }
+
   async assertCanAddNormalUser(companyId: string): Promise<void> {
     const m = await this.getActiveMembershipForCompany(companyId);
     if (!m) {
