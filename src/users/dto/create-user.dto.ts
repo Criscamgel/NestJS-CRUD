@@ -55,4 +55,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   company?: string;
+
+  /** Id numérico de sede (`CompanyBranch.id`), debe pertenecer a `company`. */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+$/, { message: 'branchId debe ser numérico' })
+  branchId?: string;
 }

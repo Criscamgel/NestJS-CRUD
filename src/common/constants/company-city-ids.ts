@@ -1,0 +1,22 @@
+/** Ids de ciudad alineados con `companyCities.config.ts` en la webapp. */
+export const COMPANY_CITY_IDS = [
+  'bogota',
+  'medellin',
+  'cali',
+  'barranquilla',
+  'cartagena',
+  'bucaramanga',
+  'pereira',
+  'manizales',
+  'cucuta',
+  'ibague',
+  'santa_marta',
+  'villavicencio',
+  'pasto',
+  'monteria',
+  'neiva',
+  'armenia',
+  'popayan',
+  'valledupar',
+  'other',
+] as const;

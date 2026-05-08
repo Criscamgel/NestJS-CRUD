@@ -29,6 +29,7 @@ import {
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import { MembershipsService } from 'src/memberships/memberships.service';
 import { ValidRoles } from 'src/auth/interfaces';
+import { CompanyBranchService } from 'src/company-branch/company-branch.service';
 
 @Injectable()
 export class UsersService {
@@ -42,6 +43,7 @@ export class UsersService {
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
     private readonly membershipsService: MembershipsService,
+    private readonly companyBranchService: CompanyBranchService,
   ) {}
 
   async create(createUserDto: CreateUserDto, creator: User) {
@@ -124,12 +126,18 @@ export class UsersService {
       );
 
       createUserDto.id = counter.seq.toString();
-      const { password, role, ...userData } = createUserDto;
-      
+      const { password, role, branchId: rawBranchId, ...userData } = createUserDto;
+      const normalizedBranchId =
+        await this.companyBranchService.ensureBranchBelongsToCompany(
+          rawBranchId,
+          String(createUserDto.company ?? ''),
+        );
+
       const temporaryPassword = password || (Math.random().toString(36).substring(2) + Date.now().toString(36) + 'A1!');
 
       const user = await this.userModel.create({
         ...userData,
+        branchId: normalizedBranchId,
         roles: [role],
         password: bcrypt.hashSync(String(temporaryPassword), 10),
       });
@@ -282,8 +290,38 @@ export class UsersService {
         .exec(),
       this.userModel.countDocuments(filter),
     ]);
+
+    const objs = data.map((u) => u.toObject() as unknown as Record<string, unknown>);
+    const branchIds = [
+      ...new Set(
+        objs
+          .map((o) => o['branchId'] as string | undefined)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    let branchNames = new Map<string, string>();
+    if (branchIds.length > 0) {
+      try {
+        const branches = await this.companyBranchService.findBranchNamesByIds(
+          branchIds,
+        );
+        branchNames = branches;
+      } catch {
+        /* ignore enrich errors */
+      }
+    }
+
+    const enriched = objs.map((o) => {
+      const bid = o['branchId'] as string | undefined;
+      return {
+        ...o,
+        branchName:
+          bid !== undefined ? branchNames.get(String(bid)) ?? '' : '',
+      };
+    });
+
     return {
-      data,
+      data: enriched,
       meta: buildPaginationMeta(total, page, limit),
     };
   }
@@ -442,6 +480,29 @@ export class UsersService {
       }
       
       asAny.company = companyId;
+    }
+
+    const newCompanyId = String(
+      asAny.company ?? targetUser.company ?? '',
+    ).trim();
+
+    if ('branchId' in asAny) {
+      const raw = asAny.branchId;
+      const norm = await this.companyBranchService.ensureBranchBelongsToCompany(
+        raw === null || raw === '' ? undefined : raw,
+        newCompanyId,
+      );
+      asAny.branchId = norm === undefined ? null : norm;
+    } else if (asAny.company !== undefined && targetUser.branchId) {
+      try {
+        const kept = await this.companyBranchService.ensureBranchBelongsToCompany(
+          targetUser.branchId,
+          newCompanyId,
+        );
+        asAny.branchId = kept ?? null;
+      } catch {
+        asAny.branchId = null;
+      }
     }
 
     const { role, ...updatePayload } = asAny;

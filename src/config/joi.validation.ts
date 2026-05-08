@@ -18,6 +18,7 @@ export const JoiValidationSchema = Joi.object({
     MAILER_SECRET_KEY: Joi.string().required(),
     /** Destino del formulario landing (por defecto hola@cheky.co en código) */
     CONTACT_DEMO_INBOX: Joi.string().email().optional(),
+    /** Bold Pagos — opcionales para no bloquear entornos sin pasarela */
     /** Base URL Bold (API Link), sin barra final. Nombre que usa el API en producción y el demo oficial. */
     BOLD_API_LINK_URL: Joi.string().uri().optional().allow(''),
     /** Alias opcional del mismo valor (documentación previa). */
