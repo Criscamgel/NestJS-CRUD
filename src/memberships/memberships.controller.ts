@@ -30,12 +30,12 @@ export class MembershipsController {
 
   /** Debe declararse antes de `@Get(':id')` para no capturarlo como id. */
   @Get('company-dashboard')
-  @Auth(ValidRoles.admin)
+  @Auth(ValidRoles.admin, ValidRoles.user)
   getCompanyDashboard(@GetUser() actor: User) {
     const companyId = actor.company?.trim();
     if (!companyId) {
       throw new BadRequestException(
-        'El administrador no está vinculado a una empresa',
+        'Tu usuario no está vinculado a una empresa.',
       );
     }
     return this.membershipsService.getDashboardSummaryForCompany(companyId);
