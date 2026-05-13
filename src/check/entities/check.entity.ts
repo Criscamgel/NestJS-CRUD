@@ -31,6 +31,10 @@ export class Check extends Document {
     })
     mobile!: string;
 
+    /** Número de documento de identidad registrado al crear el check. */
+    @Prop({ trim: true })
+    documentNumber?: string;
+
     /** `User.id` (string) del operador que creó el registro; ausente en datos legacy. */
     @Prop({ index: true })
     createdByUserId?: string;

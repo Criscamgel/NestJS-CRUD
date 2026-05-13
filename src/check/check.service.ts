@@ -91,6 +91,7 @@ export class CheckService {
       'lastName',
       'email',
       'mobile',
+      'documentNumber',
     ]);
   }
 
@@ -181,6 +182,7 @@ export class CheckService {
           lastName: createCheckDto.lastName.trim(),
           email: createCheckDto.email.trim().toLowerCase(),
           mobile: createCheckDto.mobile.trim(),
+          documentNumber: createCheckDto.documentNumber.trim(),
           createdByUserId: actor.id,
           companyId:
             !isSuperAdmin && actor.company

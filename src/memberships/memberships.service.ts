@@ -737,6 +737,8 @@ export class MembershipsService {
         daysUntilExpiry: null as number | null,
         checksUsedInPeriod: 0,
         checksPendingMonthly: null as number | null,
+        checksUsedInCurrentMonth: null as number | null,
+        maxChecksPerMonthSnapshot: null as number | null,
         companyUsersCount,
       };
     }
@@ -768,6 +770,8 @@ export class MembershipsService {
       daysUntilExpiry,
       checksUsedInPeriod: m.checksUsedInPeriod ?? 0,
       checksPendingMonthly,
+      checksUsedInCurrentMonth: m.checksUsedInCurrentMonth ?? 0,
+      maxChecksPerMonthSnapshot: m.maxChecksPerMonthSnapshot ?? null,
       companyUsersCount,
     };
   }
