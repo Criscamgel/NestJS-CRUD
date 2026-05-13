@@ -20,6 +20,14 @@ const BRAND = {
   textBody: '#374151',
 };
 
+function escapeHtmlForEmail(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ─────────────────────────────────────────────
 // Shared layout wrapper
 // ─────────────────────────────────────────────
@@ -315,6 +323,47 @@ export function recoverPasswordEmailTemplate(recoveryLink: string): string {
     </p>
 
     ${infoBox('🔐 Por seguridad, este enlace expirará próximamente y solo puede usarse una vez. Si <strong>no</strong> solicitaste este cambio, ignora este correo — tu contraseña permanecerá sin cambios.')}
+  `;
+
+  return emailLayout(content, showLogo);
+}
+
+// ─────────────────────────────────────────────
+// Template: Password changed (logged-in user)
+// ─────────────────────────────────────────────
+export function passwordChangedNotificationTemplate(
+  displayName: string,
+): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const safeName = escapeHtmlForEmail(displayName.trim() || 'Usuario');
+  const content = `
+    <h2 style="
+      margin: 0 0 8px;
+      color: ${BRAND.neutral};
+      font-size: 22px;
+      font-weight: 700;
+    ">Contraseña actualizada ✅</h2>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.7;
+    ">
+      Hola <strong>${safeName}</strong>,
+    </p>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.7;
+    ">
+      Te confirmamos que la contraseña de tu cuenta en <strong>Cheky</strong> se cambió correctamente.
+      Si no fuiste tú, restablece tu acceso desde la opción de recuperación de contraseña o contacta a soporte de inmediato.
+    </p>
+
+    ${infoBox('🔐 Por seguridad, nunca compartas tu contraseña. Si recibes este correo sin haber hecho el cambio, alguien más podría tener acceso a tu cuenta.')}
   `;
 
   return emailLayout(content, showLogo);

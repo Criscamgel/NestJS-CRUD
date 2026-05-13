@@ -30,8 +30,28 @@ export class CompanyService {
         { new: true, upsert: true }
       );
 
+      const {
+        chamberOfCommerceRenewalDate,
+        email,
+        name,
+        nit,
+        city,
+        sector,
+        legalRepresentativeName,
+        idNumber,
+        phoneNumber,
+      } = createCompanyDto;
+
       const company = await this.companyModel.create({
-        ...createCompanyDto,
+        name: name.trim(),
+        nit: nit.trim(),
+        city: city.trim(),
+        sector: sector.trim(),
+        legalRepresentativeName: legalRepresentativeName.trim(),
+        idNumber: idNumber.trim(),
+        phoneNumber: phoneNumber.trim(),
+        email: email.trim().toLowerCase(),
+        chamberOfCommerceRenewalDate: new Date(chamberOfCommerceRenewalDate),
         id: counter.seq.toString(),
       });
 
@@ -52,6 +72,7 @@ export class CompanyService {
     const filter = buildRegexOrFilter<Company>(paginationQuery.search, [
       'name',
       'nit',
+      'legalRepresentativeName',
     ]);
     const [data, total] = await Promise.all([
       this.companyModel.find(filter).skip(skip).limit(limit).exec(),
@@ -72,7 +93,21 @@ export class CompanyService {
   }
 
   async update(id: string, updateCompanyDto: UpdateCompanyDto) {
-    const company = await this.companyModel.findOneAndUpdate({ id }, updateCompanyDto, { new: true });
+    const patch: Record<string, unknown> = { ...updateCompanyDto };
+    if (patch.email !== undefined && typeof patch.email === 'string') {
+      patch.email = patch.email.trim().toLowerCase();
+    }
+    if (
+      patch.chamberOfCommerceRenewalDate !== undefined &&
+      typeof patch.chamberOfCommerceRenewalDate === 'string'
+    ) {
+      patch.chamberOfCommerceRenewalDate = new Date(
+        patch.chamberOfCommerceRenewalDate,
+      );
+    }
+    const company = await this.companyModel.findOneAndUpdate({ id }, patch, {
+      new: true,
+    });
     if (!company) {
       throw new NotFoundException(`Compañía con id ${id} no encontrada`);
     }

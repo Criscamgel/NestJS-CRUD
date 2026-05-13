@@ -771,4 +771,35 @@ export class MembershipsService {
       companyUsersCount,
     };
   }
+
+  /**
+   * Conteo global para panel superAdmin: membresías vigentes (activas y no vencidas).
+   */
+  async countGloballyActiveMemberships(): Promise<number> {
+    const now = new Date();
+    return this.membershipModel.countDocuments({
+      status: MembershipStatus.ACTIVE,
+      expiresAt: { $gt: now },
+    });
+  }
+
+  /**
+   * Membresías creadas en el mes calendario actual (fecha de creación del registro).
+   */
+  async countMembershipsCreatedInCurrentMonth(): Promise<number> {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    return this.membershipModel.countDocuments({
+      createdAt: { $gte: start, $lte: end },
+    });
+  }
 }

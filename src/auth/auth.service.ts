@@ -9,13 +9,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { LoginUserDto, ResetPasswordDto, RecoverPasswordDto } from './dto';
+import { LoginUserDto, ResetPasswordDto, RecoverPasswordDto, ChangePasswordDto } from './dto';
 import { ApiResponse } from 'src/common/interfaces/api-response.interface';
 import { LoginUserResponseData } from './interfaces/LoginUserResponseData';
 import { JwtPayload } from './interfaces/JwtPayload';
 import { EmailService } from 'src/email/email.service';
 import {
   getEmailLogoAttachment,
+  passwordChangedNotificationTemplate,
   recoverPasswordEmailTemplate,
 } from 'src/email/email-templates.helper';
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
@@ -202,6 +203,66 @@ export class AuthService {
     return {
       success: true,
       message: '¡Tu contraseña ha sido actualizada exitosamente!',
+    };
+  }
+
+  async changePassword(actor: User, dto: ChangePasswordDto) {
+    if (dto.newPassword !== dto.verifyPassword) {
+      throw new BadRequestException('Las contraseñas nuevas no coinciden');
+    }
+
+    const user = await this.userModel
+      .findOne({ id: actor.id })
+      .select('id email password name lastName isActive')
+      .exec();
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'No tiene los permisos suficientes para acceder a este recurso',
+      );
+    }
+
+    if (isUserMarkedInactive(user.isActive)) {
+      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+    }
+
+    if (!bcrypt.compareSync(dto.currentPassword, user.password)) {
+      throw new BadRequestException('La contraseña actual no es correcta');
+    }
+
+    if (bcrypt.compareSync(dto.newPassword, user.password)) {
+      throw new BadRequestException(
+        'La nueva contraseña debe ser distinta a la actual',
+      );
+    }
+
+    const oldHash = user.password;
+    const hashedPassword = bcrypt.hashSync(dto.newPassword, 10);
+    await this.userModel.findOneAndUpdate({ id: user.id }, { password: hashedPassword });
+
+    const displayName = [user.name, user.lastName].filter(Boolean).join(' ').trim() || user.email;
+    const htmlBody = passwordChangedNotificationTemplate(displayName);
+    const logoAtt = getEmailLogoAttachment();
+
+    const emailSent = await this.emailService.sendEmail({
+      to: user.email,
+      subject: 'Tu contraseña en Cheky fue actualizada',
+      htmlBody,
+      attachements: logoAtt ? [logoAtt] : [],
+    });
+
+    if (!emailSent) {
+      await this.userModel.findOneAndUpdate({ id: user.id }, { password: oldHash });
+      throw new BadRequestException(
+        'No se pudo enviar el correo de confirmación. Tu contraseña no fue modificada; inténtalo de nuevo más tarde.',
+      );
+    }
+
+    return {
+      success: true,
+      message:
+        'Contraseña actualizada correctamente. Te enviamos un correo de confirmación.',
+      timestamp: new Date().toISOString(),
     };
   }
 }

@@ -30,6 +30,12 @@ export class PlansController {
     return this.plansService.findPublicCatalog(paginationQuery);
   }
 
+  @Get('admin/dashboard-stats')
+  @Auth(ValidRoles.superAdmin)
+  getAdminDashboardStats() {
+    return this.plansService.getAdminDashboardStats();
+  }
+
   @Get()
   @Auth(ValidRoles.superAdmin, ValidRoles.admin)
   findAll(

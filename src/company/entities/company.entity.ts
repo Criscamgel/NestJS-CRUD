@@ -21,6 +21,21 @@ export class Company extends Document {
   @Prop()
   sector?: string;
 
+  @Prop()
+  legalRepresentativeName?: string;
+
+  @Prop()
+  idNumber?: string;
+
+  @Prop()
+  phoneNumber?: string;
+
+  @Prop()
+  email?: string;
+
+  @Prop({ type: Date })
+  chamberOfCommerceRenewalDate?: Date;
+
   @Prop({ default: true })
   isActive!: boolean;
 }
