@@ -206,6 +206,11 @@ export class LandingOnboardingService {
       nit: dto.company.nit.trim(),
       city: dto.company.city.trim(),
       sector: dto.company.sector.trim(),
+      legalRepresentativeName: dto.company.legalRepresentativeName.trim(),
+      idNumber: dto.company.idNumber.trim(),
+      phoneNumber: dto.company.phoneNumber.trim(),
+      email: dto.company.email.trim().toLowerCase(),
+      chamberOfCommerceRenewalDate: dto.company.chamberOfCommerceRenewalDate.trim(),
     });
     const companyId = String((company as { id?: string }).id ?? '');
 

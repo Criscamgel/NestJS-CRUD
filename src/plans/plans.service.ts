@@ -243,4 +243,23 @@ export class PlansService {
       isVisible,
     };
   }
+
+  /** Estadísticas agregadas para el módulo de planes (solo superAdmin). */
+  async getAdminDashboardStats() {
+    const [totalPlans, activeMemberships, newMembershipsThisMonth] =
+      await Promise.all([
+        this.planModel.countDocuments(),
+        this.membershipsService.countGloballyActiveMemberships(),
+        this.membershipsService.countMembershipsCreatedInCurrentMonth(),
+      ]);
+
+    return {
+      success: true,
+      data: {
+        totalPlans,
+        activeMemberships,
+        newMembershipsThisMonth,
+      },
+    };
+  }
 }
