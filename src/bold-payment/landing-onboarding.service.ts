@@ -15,7 +15,11 @@ import { EmailService } from 'src/email/email.service';
 import {
   getEmailLogoAttachment,
   landingAdminOnboardingEmailTemplate,
+  landingPlanThankYouEmailTemplate,
 } from 'src/email/email-templates.helper';
+import { PlansService } from 'src/plans/plans.service';
+import { COMPANY_CITIES_CATALOG } from 'src/common/catalog/company-cities.catalog';
+import { COMPANY_SECTORS_CATALOG } from 'src/common/catalog/company-sectors.catalog';
 import { CompanyService } from 'src/company/company.service';
 import { UsersService } from 'src/users/users.service';
 import { MembershipsService } from 'src/memberships/memberships.service';
@@ -49,7 +53,15 @@ export class LandingOnboardingService {
     private readonly usersService: UsersService,
     private readonly membershipsService: MembershipsService,
     private readonly authService: AuthService,
+    private readonly plansService: PlansService,
   ) {}
+
+  private catalogLabel(
+    catalog: { id: string; label: string }[],
+    id: string,
+  ): string {
+    return catalog.find((o) => o.id === id)?.label ?? id;
+  }
 
   private async assertTokenUsable(token: string): Promise<LandingOnboardingClaims> {
     const bl = await this.blacklistedTokenModel.findOne({ token }).lean();
@@ -156,25 +168,55 @@ export class LandingOnboardingService {
 
     const base = getFrontendBaseUrl().replace(/\/+$/, '');
     const onboardingLink = `${base}/auth/complete-landing-admin?token=${encodeURIComponent(token)}`;
-    const htmlBody = landingAdminOnboardingEmailTemplate(onboardingLink);
-    const logoAtt = getEmailLogoAttachment();
-
-    const sent = await this.emailService.sendEmail({
-      to: dto.email.trim(),
-      subject: 'Cheky — Crea tu cuenta de administrador',
-      htmlBody,
-      attachements: logoAtt ? [logoAtt] : [],
-    });
-    if (!sent) {
+    const planDoc = await this.plansService.findOneById(String(intent.planId));
+    if (!planDoc) {
       throw new BadRequestException(
-        'No se pudo enviar el correo. Intenta de nuevo en unos minutos.',
+        'No se encontró el plan asociado al pago. Contacta a ventas@cheky.co.',
+      );
+    }
+    const totalCharge = Math.round(
+      Number(planDoc.monthlyPrice) * Number(planDoc.durationMonths),
+    );
+    const currency = planDoc.currency || 'COP';
+
+    const onboardingHtml = landingAdminOnboardingEmailTemplate(onboardingLink);
+    const thankYouHtml = landingPlanThankYouEmailTemplate({
+      planName: planDoc.name,
+      monthlyPrice: planDoc.monthlyPrice,
+      currency,
+      durationMonths: planDoc.durationMonths,
+      maxUsers: planDoc.maxUsers,
+      maxChecksPerMonth: planDoc.maxChecksPerMonth,
+      totalCharge,
+    });
+    const logoAtt = getEmailLogoAttachment();
+    const attachments = logoAtt ? [logoAtt] : [];
+
+    const [sentOnboarding, sentThankYou] = await Promise.all([
+      this.emailService.sendEmail({
+        to: dto.email.trim(),
+        subject: 'Cheky — Instrucciones para completar tu registro',
+        htmlBody: onboardingHtml,
+        attachements: attachments,
+      }),
+      this.emailService.sendEmail({
+        to: dto.email.trim(),
+        subject: 'Cheky — Gracias por tu compra',
+        htmlBody: thankYouHtml,
+        attachements: attachments,
+      }),
+    ]);
+
+    if (!sentOnboarding || !sentThankYou) {
+      throw new BadRequestException(
+        'No se pudieron enviar los correos. Intenta de nuevo en unos minutos.',
       );
     }
 
     return {
       success: true,
       message:
-        'Te enviamos un correo con un enlace seguro para crear tu empresa y tu usuario administrador. Revisa también la carpeta de spam.',
+        'Te enviamos dos correos: uno con el enlace de registro y otro con el detalle de tu plan. Revisa también la carpeta de spam.',
       timestamp: new Date().toISOString(),
     };
   }
@@ -201,11 +243,14 @@ export class LandingOnboardingService {
 
     const emailNorm = normalizeAuthEmail(String(decoded.email));
 
+    const cityId = dto.company.city.trim();
+    const sectorId = dto.company.sector.trim();
+
     const { company } = await this.companyService.create({
       name: dto.company.name.trim(),
       nit: dto.company.nit.trim(),
-      city: dto.company.city.trim(),
-      sector: dto.company.sector.trim(),
+      city: this.catalogLabel(COMPANY_CITIES_CATALOG, cityId),
+      sector: this.catalogLabel(COMPANY_SECTORS_CATALOG, sectorId),
       legalRepresentativeName: dto.company.legalRepresentativeName.trim(),
       idNumber: dto.company.idNumber.trim(),
       phoneNumber: dto.company.phoneNumber.trim(),

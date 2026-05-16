@@ -428,6 +428,70 @@ export function landingAdminOnboardingEmailTemplate(onboardingLink: string): str
   return emailLayout(content, showLogo);
 }
 
+export type LandingPlanThankYouPayload = {
+  planName: string;
+  monthlyPrice: number;
+  currency: string;
+  durationMonths: number;
+  maxUsers: number;
+  maxChecksPerMonth: number;
+  totalCharge: number;
+};
+
+// ─────────────────────────────────────────────
+// Template: Landing — agradecimiento tras pago (detalle del plan)
+// ─────────────────────────────────────────────
+export function landingPlanThankYouEmailTemplate(
+  payload: LandingPlanThankYouPayload,
+): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const {
+    planName,
+    monthlyPrice,
+    currency,
+    durationMonths,
+    maxUsers,
+    maxChecksPerMonth,
+    totalCharge,
+  } = payload;
+  const fmt = (n: number) =>
+    n.toLocaleString('es-CO', { maximumFractionDigits: 0 });
+  const periodLabel =
+    durationMonths === 1 ? '1 mes' : `${durationMonths} meses`;
+
+  const row = (label: string, value: string) => `
+<tr>
+  <td style="padding: 10px 0; border-bottom: 1px solid #E5E7EB; font-size: 14px; color: ${BRAND.textMuted}; width: 42%;">${label}</td>
+  <td style="padding: 10px 0; border-bottom: 1px solid #E5E7EB; font-size: 14px; color: ${BRAND.textBody}; font-weight: 600;">${escapeHtmlForEmail(value)}</td>
+</tr>`;
+
+  const content = `
+    <h2 style="margin: 0 0 8px; color: ${BRAND.neutral}; font-size: 22px; font-weight: 700;">
+      Gracias por elegir Cheky
+    </h2>
+    <p style="margin: 0 0 20px; color: ${BRAND.textBody}; font-size: 15px; line-height: 1.7;">
+      Confirmamos tu pago. Somos un gran aliado en la <strong>seguridad de tus ventas</strong>.
+      A continuación encontrarás el resumen del plan que adquiriste.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px;">
+      ${row('Plan', planName)}
+      ${row('Precio mensual', `$${fmt(monthlyPrice)} ${currency}`)}
+      ${row('Total pagado', `$${fmt(totalCharge)} ${currency}`)}
+      ${row('Vigencia', periodLabel)}
+      ${row('Usuarios (rol usuario)', `Hasta ${fmt(maxUsers)}`)}
+      ${row('Checks por mes', `Hasta ${fmt(maxChecksPerMonth)}`)}
+    </table>
+    ${infoBox(
+      `<strong>¿Necesitas ayuda?</strong><br/>Escríbenos a <a href="mailto:ventas@cheky.co" style="color:${BRAND.primary};">ventas@cheky.co</a>. Te responderemos lo antes posible.`,
+    )}
+    <p style="margin: 0; color: ${BRAND.textMuted}; font-size: 13px; line-height: 1.6;">
+      En un correo aparte recibirás el enlace para completar el registro de tu empresa y tu usuario administrador.
+    </p>
+  `;
+
+  return emailLayout(content, showLogo);
+}
+
 // ─────────────────────────────────────────────
 // Template: Landing — solicitud de demo (contacto)
 // ─────────────────────────────────────────────
