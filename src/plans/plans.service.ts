@@ -302,8 +302,14 @@ export class PlansService {
       maxBranchesRaw !== undefined && maxBranchesRaw !== null
         ? Number(maxBranchesRaw)
         : 0;
+    const idRaw = o.id;
+    const id =
+      idRaw !== undefined && idRaw !== null && String(idRaw).trim()
+        ? String(idRaw).trim()
+        : '';
     return {
       ...o,
+      id,
       maxBranches,
       maxChecks: maxChecksPerMonth,
       isVisible,
