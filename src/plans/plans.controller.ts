@@ -8,7 +8,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
-import { CreatePlanDto, UpdatePlanDto } from './dto';
+import {
+  CreatePlanDto,
+  LookupPlanByNameQueryDto,
+  UpdatePlanDto,
+} from './dto';
 import { Auth, GetUser } from 'src/auth/decorators';
 import { ValidRoles } from 'src/auth/interfaces';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
@@ -30,6 +34,12 @@ export class PlansController {
     return this.plansService.findPublicCatalog(paginationQuery);
   }
 
+  /** Plan por nombre (landing, tarjeta «Plan a tu medida»). */
+  @Get('public/by-name')
+  findPublicByName(@Query() query: LookupPlanByNameQueryDto) {
+    return this.plansService.findPublicByName(query.name);
+  }
+
   @Get('admin/dashboard-stats')
   @Auth(ValidRoles.superAdmin)
   getAdminDashboardStats() {
@@ -43,6 +53,16 @@ export class PlansController {
     @GetUser() requester: User,
   ) {
     return this.plansService.findAll(paginationQuery, requester);
+  }
+
+  /** Plan por nombre (zona privada, tarjeta «Plan a tu medida»). */
+  @Get('by-name')
+  @Auth(ValidRoles.superAdmin, ValidRoles.admin)
+  findCatalogByName(
+    @Query() query: LookupPlanByNameQueryDto,
+    @GetUser() requester: User,
+  ) {
+    return this.plansService.findCatalogByName(query.name, requester);
   }
 
   @Get(':id')
