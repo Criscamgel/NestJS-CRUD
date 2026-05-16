@@ -24,6 +24,9 @@ function isPaidStatus(status: unknown): boolean {
   return PAID_STATUSES.has(s) || PAID_STATUSES.has(s.toUpperCase());
 }
 
+/** Mínimo documentado por Bold para links de pago en COP (tarjeta, PSE, Nequi, etc.). */
+const BOLD_MIN_TOTAL_AMOUNT_COP = 1000;
+
 @Injectable()
 export class BoldPaymentService {
   private readonly logger = new Logger(BoldPaymentService.name);
@@ -131,6 +134,49 @@ export class BoldPaymentService {
     return (ms * BigInt(1_000_000) + tenMinutesNs).toString();
   }
 
+  private assertBoldMinimumCharge(totalAmount: number, currency: string): void {
+    const cur = (currency || 'COP').trim().toUpperCase();
+    if (cur === 'COP' && totalAmount < BOLD_MIN_TOTAL_AMOUNT_COP) {
+      throw new BadRequestException(
+        `El total a cobrar (${totalAmount.toLocaleString('es-CO')} ${cur}) es menor al mínimo de Bold (${BOLD_MIN_TOTAL_AMOUNT_COP.toLocaleString('es-CO')} ${cur}). Ajusta el precio del plan o contacta a tu vendedor.`,
+      );
+    }
+  }
+
+  private formatBoldApiError(error: unknown): string {
+    const ax = error as AxiosError<Record<string, unknown>>;
+    const data = ax.response?.data;
+    if (data && typeof data === 'object') {
+      const message = data.message;
+      if (typeof message === 'string' && message.trim()) {
+        return message.trim();
+      }
+      if (Array.isArray(message)) {
+        return message.map((m) => String(m)).join('. ');
+      }
+      const err = data.error;
+      if (typeof err === 'string' && err.trim()) {
+        return err.trim();
+      }
+      const errors = data.errors;
+      if (Array.isArray(errors)) {
+        return errors
+          .map((item) =>
+            typeof item === 'string'
+              ? item
+              : typeof item === 'object' && item && 'message' in item
+                ? String((item as { message?: unknown }).message)
+                : JSON.stringify(item),
+          )
+          .join('. ');
+      }
+    }
+    if (ax.response?.status === 400) {
+      return `Bold rechazó el cobro (HTTP 400). El monto mínimo en COP suele ser ${BOLD_MIN_TOTAL_AMOUNT_COP.toLocaleString('es-CO')}.`;
+    }
+    return ax.message || 'No se pudo crear el enlace de pago en Bold.';
+  }
+
   private async callBoldCreateLink(params: {
     amount: number;
     currency: string;
@@ -144,12 +190,14 @@ export class BoldPaymentService {
     if (totalAmount < 1 || !Number.isFinite(totalAmount)) {
       throw new BadRequestException('Monto del cobro inválido.');
     }
+    const currency = params.currency || 'COP';
+    this.assertBoldMinimumCharge(totalAmount, currency);
 
     /** Preferimos CLOSE con referencia estable para conciliación (además de texto legible en Bold). */
     const body = {
       amount_type: 'CLOSE' as const,
       amount: {
-        currency: params.currency || 'COP',
+        currency,
         total_amount: totalAmount,
       },
       reference: params.reference,
@@ -183,15 +231,13 @@ export class BoldPaymentService {
       }
       return { url: outUrl, payment_link: outLink };
     } catch (e) {
-      const ax = e as AxiosError<{ message?: string }>;
-      const msg =
-        ax.response?.data &&
-        typeof ax.response.data === 'object' &&
-        'message' in ax.response.data
-          ? String((ax.response.data as { message?: string }).message)
-          : ax.message;
-      this.logger.error(`Bold create link error: ${msg}`);
-      throw new BadRequestException(msg || 'No se pudo crear el enlace de pago en Bold.');
+      const msg = this.formatBoldApiError(e);
+      this.logger.error(
+        `Bold create link error: ${msg} | body=${JSON.stringify(
+          (e as AxiosError)?.response?.data ?? null,
+        )}`,
+      );
+      throw new BadRequestException(msg);
     }
   }
 
@@ -238,15 +284,21 @@ export class BoldPaymentService {
     monthlyPrice: number;
     durationMonths: number;
   }): number {
-    const total = Math.round(plan.monthlyPrice * plan.durationMonths);
-    if (total < 1) {
+    const total = Math.round(
+      Number(plan.monthlyPrice) * Number(plan.durationMonths),
+    );
+    if (!Number.isFinite(total) || total < 1) {
       throw new BadRequestException('Monto del plan inválido');
     }
     return total;
   }
 
   async startLandingCheckout(planId: string) {
-    const plan = await this.loadPlanForPublicCheckout(planId);
+    const normalizedPlanId = planId?.trim();
+    if (!normalizedPlanId) {
+      throw new BadRequestException('El identificador del plan es obligatorio.');
+    }
+    const plan = await this.loadPlanForPublicCheckout(normalizedPlanId);
     const amount = this.computeChargeAmount(plan);
     const currency = plan.currency || 'COP';
     const ref = `CHEKY-LAND-${crypto.randomUUID()}`;
@@ -288,7 +340,11 @@ export class BoldPaymentService {
   }
 
   async startCompanyAdminCheckout(planId: string, actor: User) {
-    const plan = await this.loadPlanForPublicCheckout(planId);
+    const normalizedPlanId = planId?.trim();
+    if (!normalizedPlanId) {
+      throw new BadRequestException('El identificador del plan es obligatorio.');
+    }
+    const plan = await this.loadPlanForPublicCheckout(normalizedPlanId);
     const roles = actor.roles || [];
     const legacy = (actor as { role?: string }).role;
     const isSuper =
