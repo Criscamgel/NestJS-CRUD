@@ -222,12 +222,13 @@ export class BoldPaymentService {
     return false;
   }
 
+  /** Planes ocultos del catálogo (`isVisible: false`) sí pueden contratarse vía «Plan a tu medida». */
   private async loadPlanForPublicCheckout(planId: string) {
     const plan = await this.plansService.findOneById(planId);
     if (!plan) {
       throw new BadRequestException('Plan no encontrado');
     }
-    if (!plan.isActive || plan.isVisible === false) {
+    if (!plan.isActive) {
       throw new BadRequestException('Este plan no está disponible para contratación.');
     }
     return plan;

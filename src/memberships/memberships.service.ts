@@ -300,11 +300,6 @@ export class MembershipsService {
           'Solo puedes contratar planes para tu propia empresa',
         );
       }
-      if (plan.isVisible === false) {
-        throw new ForbiddenException(
-          'Este plan no está disponible en el catálogo',
-        );
-      }
     }
 
     const maxChecksForPeriodSnapshot = plan.maxChecksPerMonth * plan.durationMonths;
@@ -385,9 +380,6 @@ export class MembershipsService {
     }
     if (!plan.isActive) {
       throw new BadRequestException('El plan no está activo');
-    }
-    if (plan.isVisible === false) {
-      throw new BadRequestException('Este plan no está disponible para contratación.');
     }
     const maxChecksForPeriodSnapshot = plan.maxChecksPerMonth * plan.durationMonths;
     if (maxChecksForPeriodSnapshot < 1) {

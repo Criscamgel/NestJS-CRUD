@@ -134,14 +134,12 @@ export class PlansService {
   }
 
   /**
-   * Plan por nombre para la landing: activo y visible en catálogo.
+   * Plan por nombre para la landing (tarjeta «Plan a tu medida»).
+   * Incluye planes ocultos del catálogo (`isVisible: false`); excluye inactivos.
    */
   async findPublicByName(name: string) {
     const filter = {
-      $and: [
-        this.buildExactNameFilter(name),
-        { isVisible: true, isActive: true },
-      ],
+      $and: [this.buildExactNameFilter(name), { isActive: true }],
     };
     const plan = await this.planModel.findOne(filter).exec();
     if (!plan) {
@@ -151,7 +149,8 @@ export class PlansService {
   }
 
   /**
-   * Plan por nombre para admin de empresa (mismas reglas que el catálogo en `findAll`).
+   * Plan por nombre para zona privada (tarjeta «Plan a tu medida»).
+   * Incluye planes ocultos del catálogo; excluye inactivos y el plan de membresía vigente (admin empresa).
    */
   async findCatalogByName(name: string, requester: User) {
     const requesterRoles = requester?.roles || [];
@@ -160,13 +159,13 @@ export class PlansService {
       requesterRoles.includes('superAdmin') ||
       requesterLegacy === 'superAdmin';
 
-    const clauses: Record<string, unknown>[] = [this.buildExactNameFilter(name)];
+    const clauses: Record<string, unknown>[] = [
+      this.buildExactNameFilter(name),
+      { isActive: true },
+    ];
 
     if (!isSuperAdmin) {
-      const catalogClause: Record<string, unknown> = {
-        isVisible: true,
-        isActive: true,
-      };
+      const searchClause: Record<string, unknown> = {};
       const companyId = requester.company?.trim();
       if (companyId) {
         const excludePlanIds =
@@ -174,14 +173,15 @@ export class PlansService {
             companyId,
           );
         if (excludePlanIds.length > 0) {
-          catalogClause['id'] = { $nin: excludePlanIds };
+          searchClause['id'] = { $nin: excludePlanIds };
         }
       }
-      clauses.push(catalogClause);
+      if (Object.keys(searchClause).length > 0) {
+        clauses.push(searchClause);
+      }
     }
 
-    const filter =
-      clauses.length === 1 ? clauses[0]! : { $and: clauses };
+    const filter = { $and: clauses };
 
     const plan = await this.planModel.findOne(filter).exec();
     if (!plan) {
