@@ -19,6 +19,7 @@ import { MembershipsModule } from './memberships/memberships.module';
 import { ContactDemoModule } from './contact-demo/contact-demo.module';
 import { SuperAdminDashboardModule } from './super-admin-dashboard/super-admin-dashboard.module';
 import { BoldPaymentModule } from './bold-payment/bold-payment.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { CompanyBranchModule } from './company-branch/company-branch.module';
 
 @Module({
@@ -47,6 +48,7 @@ import { CompanyBranchModule } from './company-branch/company-branch.module';
     SuperAdminDashboardModule,
     BoldPaymentModule,
     CompanyBranchModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [AppService],
