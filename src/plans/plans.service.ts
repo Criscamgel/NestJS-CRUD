@@ -19,7 +19,10 @@ import {
   buildPaginationMeta,
   resolvePagination,
 } from 'src/common/utils/pagination';
-import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
+import {
+  buildRegexOrFilter,
+  escapeRegex,
+} from 'src/common/utils/mongo-search';
 
 @Injectable()
 export class PlansService {
@@ -124,6 +127,69 @@ export class PlansService {
    * Catálogo para la landing y otros clientes públicos: planes activos y visibles en catálogo.
    * Sin autenticación; no aplica exclusión por membresía vigente (eso solo aplica a admins logueados).
    */
+  /** Coincidencia exacta por nombre (insensible a mayúsculas). */
+  private buildExactNameFilter(name: string): Record<string, unknown> {
+    const pattern = `^${escapeRegex(name.trim())}$`;
+    return { name: { $regex: pattern, $options: 'i' } };
+  }
+
+  /**
+   * Plan por nombre para la landing: activo y visible en catálogo.
+   */
+  async findPublicByName(name: string) {
+    const filter = {
+      $and: [
+        this.buildExactNameFilter(name),
+        { isVisible: true, isActive: true },
+      ],
+    };
+    const plan = await this.planModel.findOne(filter).exec();
+    if (!plan) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+    return this.toPublicPlan(plan);
+  }
+
+  /**
+   * Plan por nombre para admin de empresa (mismas reglas que el catálogo en `findAll`).
+   */
+  async findCatalogByName(name: string, requester: User) {
+    const requesterRoles = requester?.roles || [];
+    const requesterLegacy = (requester as { role?: string } | undefined)?.role;
+    const isSuperAdmin =
+      requesterRoles.includes('superAdmin') ||
+      requesterLegacy === 'superAdmin';
+
+    const clauses: Record<string, unknown>[] = [this.buildExactNameFilter(name)];
+
+    if (!isSuperAdmin) {
+      const catalogClause: Record<string, unknown> = {
+        isVisible: true,
+        isActive: true,
+      };
+      const companyId = requester.company?.trim();
+      if (companyId) {
+        const excludePlanIds =
+          await this.membershipsService.getActivePlanIdsExcludedFromCatalog(
+            companyId,
+          );
+        if (excludePlanIds.length > 0) {
+          catalogClause['id'] = { $nin: excludePlanIds };
+        }
+      }
+      clauses.push(catalogClause);
+    }
+
+    const filter =
+      clauses.length === 1 ? clauses[0]! : { $and: clauses };
+
+    const plan = await this.planModel.findOne(filter).exec();
+    if (!plan) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+    return this.toPublicPlan(plan);
+  }
+
   async findPublicCatalog(paginationQuery: PaginationQueryDto) {
     const { page, limit, skip } = resolvePagination(paginationQuery);
     const searchFilter = buildRegexOrFilter<Plan>(paginationQuery.search, [
