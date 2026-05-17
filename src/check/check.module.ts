@@ -8,6 +8,10 @@ import { CommonModule } from 'src/common/common.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { MembershipsModule } from 'src/memberships/memberships.module';
 import { User, UserSchema } from 'src/users/entities/user.entity';
+import {
+  CompanyBranch,
+  CompanyBranchSchema,
+} from 'src/company-branch/entities/company-branch.entity';
 
 @Module({
   controllers: [CheckController],
@@ -20,6 +24,7 @@ import { User, UserSchema } from 'src/users/entities/user.entity';
     MongooseModule.forFeature([
       { name: Check.name, schema: CheckSchema },
       { name: User.name, schema: UserSchema },
+      { name: CompanyBranch.name, schema: CompanyBranchSchema },
     ]),
   ],
   exports: [CheckModule]

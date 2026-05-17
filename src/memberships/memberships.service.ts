@@ -163,9 +163,6 @@ export class MembershipsService {
     }
     await this.membershipModel.updateOne({ _id: m._id }, { $set: snap });
     const fresh = await this.membershipModel.findById(m._id).exec();
-    await this.deactivateNormalUsersWhenCheckAccessBlocked(
-      String(m.companyId),
-    );
     return fresh ?? m;
   }
 
@@ -180,15 +177,6 @@ export class MembershipsService {
     if (!snap) return;
     const now = new Date();
 
-    const activeList = await this.membershipModel
-      .find({
-        ...this.planIdFilter(pid),
-        status: MembershipStatus.ACTIVE,
-        expiresAt: { $gt: now },
-      })
-      .select('companyId')
-      .lean();
-
     await this.membershipModel.updateMany(
       {
         ...this.planIdFilter(pid),
@@ -197,13 +185,6 @@ export class MembershipsService {
       },
       { $set: snap },
     );
-
-    const companyIds = new Set(
-      activeList.map((d) => String(d.companyId)),
-    );
-    for (const cid of companyIds) {
-      await this.deactivateNormalUsersWhenCheckAccessBlocked(cid);
-    }
   }
 
   /** Usuarios de empresa con rol `user` (los que pueden registrar checks). */
@@ -221,11 +202,27 @@ export class MembershipsService {
     };
   }
 
+  /** Usuarios de la empresa (admin + user), sin filtrar por `isActive`. */
+  private companyMembersFilter(companyId: string): Record<string, unknown> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { company: '__invalid_company__' };
+    const companyPart = /^\d+$/.test(cid)
+      ? { company: { $in: [cid, Number(cid)] } }
+      : { company: cid };
+    return {
+      ...companyPart,
+      $nor: [
+        { roles: 'superAdmin' },
+        { roles: { $in: ['superAdmin'] } },
+      ],
+    };
+  }
+
   /**
-   * Desactiva usuarios `user` si no hay membresía vigente o ya no quedan checks del periodo.
-   * No altera admins; no considera el tope mensual (se renueva cada mes).
+   * Desactiva cuentas de la empresa (admin y user) solo cuando no hay membresía vigente.
+   * Agotar el cupo de checks no desactiva cuentas.
    */
-  private async deactivateNormalUsersWhenCheckAccessBlocked(
+  private async deactivateCompanyUsersWhenMembershipExpired(
     companyId: string,
   ): Promise<void> {
     const cid = this.normalizeCompanyId(companyId);
@@ -240,26 +237,38 @@ export class MembershipsService {
       .sort({ createdAt: -1 })
       .lean();
 
-    const maxPeriod = m?.maxChecksForPeriodSnapshot ?? 0;
-    const usedPeriod = m?.checksUsedInPeriod ?? 0;
-    const periodExhausted = m != null && usedPeriod >= maxPeriod && maxPeriod > 0;
-    const blocked = m == null || periodExhausted;
-
-    if (!blocked) {
+    if (m != null) {
       return;
     }
 
-    await this.userModel.updateMany(this.normalCheckUserFilter(cid), {
+    await this.userModel.updateMany(this.companyMembersFilter(cid), {
       $set: { isActive: false },
     });
   }
 
-  private async reactivateNormalUsersForCompany(companyId: string): Promise<void> {
+  private async reactivateCompanyUsersForCompany(companyId: string): Promise<void> {
     const cid = this.normalizeCompanyId(companyId);
     if (!cid) return;
-    await this.userModel.updateMany(this.normalCheckUserFilter(cid), {
+    await this.userModel.updateMany(this.companyMembersFilter(cid), {
       $set: { isActive: true },
     });
+  }
+
+  /**
+   * Corrige cuentas desactivadas por error cuando la membresía sigue vigente
+   * (p. ej. tras agotar checks con lógica antigua).
+   */
+  async ensureCompanyUsersActiveWhenMembershipValid(
+    companyId: string,
+  ): Promise<void> {
+    const m = await this.getActiveMembershipForCompany(companyId);
+    if (!m) return;
+    await this.reactivateCompanyUsersForCompany(companyId);
+  }
+
+  /** @deprecated Use reactivateCompanyUsersForCompany */
+  private async reactivateNormalUsersForCompany(companyId: string): Promise<void> {
+    await this.reactivateCompanyUsersForCompany(companyId);
   }
 
   async create(dto: CreateMembershipDto, actor: User) {
@@ -543,7 +552,7 @@ export class MembershipsService {
   async assertCheckLimits(companyId: string): Promise<void> {
     const m = await this.getActiveMembershipForCompany(companyId);
     if (!m) {
-      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
+      await this.deactivateCompanyUsersWhenMembershipExpired(companyId);
       throw new ForbiddenException(
         'La compañía no tiene una membresía activa para registrar checks.',
       );
@@ -551,19 +560,35 @@ export class MembershipsService {
 
     if (m.checksUsedInCurrentMonth >= m.maxChecksPerMonthSnapshot) {
       throw new ForbiddenException(
-        'Se alcanzó el límite mensual de checks del plan.',
+        'Agotaste todos los checks del mes de tu plan. Contacta al administrador de tu empresa para mejorar el plan.',
       );
     }
     if (m.checksUsedInPeriod >= m.maxChecksForPeriodSnapshot) {
-      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
       throw new ForbiddenException(
-        'Se alcanzó el límite de checks del periodo de membresía.',
+        'Agotaste todos los checks de tu plan. Contacta al administrador de tu empresa para mejorar el plan.',
       );
     }
   }
 
+  private membershipQuotaExhausted(m: {
+    checksUsedInCurrentMonth?: number;
+    maxChecksPerMonthSnapshot?: number;
+    checksUsedInPeriod?: number;
+    maxChecksForPeriodSnapshot?: number;
+  }): boolean {
+    const monthly =
+      (m.maxChecksPerMonthSnapshot ?? 0) > 0 &&
+      (m.checksUsedInCurrentMonth ?? 0) >= (m.maxChecksPerMonthSnapshot ?? 0);
+    const period =
+      (m.maxChecksForPeriodSnapshot ?? 0) > 0 &&
+      (m.checksUsedInPeriod ?? 0) >= (m.maxChecksForPeriodSnapshot ?? 0);
+    return monthly || period;
+  }
+
   /** Incremento atómico tras persistir el check. */
-  async incrementCheckUsage(companyId: string): Promise<void> {
+  async incrementCheckUsage(
+    companyId: string,
+  ): Promise<{ checksQuotaExhausted: boolean }> {
     const m = await this.getActiveMembershipForCompany(companyId);
     if (!m) {
       throw new ForbiddenException('Membresía no disponible.');
@@ -581,21 +606,15 @@ export class MembershipsService {
     );
 
     if (result.modifiedCount === 0) {
-      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
       throw new ForbiddenException(
         'No se pudo registrar el consumo de checks: límite del plan alcanzado.',
       );
     }
 
     const after = await this.membershipModel.findById(m._id).lean();
-    if (
-      after &&
-      (after.checksUsedInPeriod ?? 0) >=
-        (after.maxChecksForPeriodSnapshot ?? 0) &&
-      (after.maxChecksForPeriodSnapshot ?? 0) > 0
-    ) {
-      await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
-    }
+    return {
+      checksQuotaExhausted: after ? this.membershipQuotaExhausted(after) : false,
+    };
   }
 
   async suspend(id: string, actorId: string, reason?: string) {
@@ -611,9 +630,7 @@ export class MembershipsService {
     m.deactivatedBy = actorId;
     m.deactivationReason = reason ?? 'manual_super_admin';
     await m.save();
-    await this.deactivateNormalUsersWhenCheckAccessBlocked(
-      String(m.companyId),
-    );
+    await this.deactivateCompanyUsersWhenMembershipExpired(String(m.companyId));
     return { message: 'Membresía suspendida exitosamente' };
   }
 
@@ -689,7 +706,7 @@ export class MembershipsService {
         },
       },
     );
-    await this.deactivateNormalUsersWhenCheckAccessBlocked(companyId);
+    await this.deactivateCompanyUsersWhenMembershipExpired(companyId);
   }
 
   /** Planes a ocultar del catálogo (membresía vigente no vencida). */
@@ -754,16 +771,22 @@ export class MembershipsService {
         (m.checksUsedInCurrentMonth ?? 0),
     );
 
+    const maxPeriod = m.maxChecksForPeriodSnapshot ?? 0;
+    const usedPeriod = m.checksUsedInPeriod ?? 0;
+    const checksQuotaExhausted = this.membershipQuotaExhausted(m);
+
     return {
       hasActiveMembership: true,
       planName,
       membershipExpiresAt:
         m.expiresAt instanceof Date ? m.expiresAt.toISOString() : String(m.expiresAt),
       daysUntilExpiry,
-      checksUsedInPeriod: m.checksUsedInPeriod ?? 0,
+      checksUsedInPeriod: usedPeriod,
       checksPendingMonthly,
       checksUsedInCurrentMonth: m.checksUsedInCurrentMonth ?? 0,
       maxChecksPerMonthSnapshot: m.maxChecksPerMonthSnapshot ?? null,
+      maxChecksForPeriodSnapshot: maxPeriod,
+      checksQuotaExhausted,
       companyUsersCount,
     };
   }
