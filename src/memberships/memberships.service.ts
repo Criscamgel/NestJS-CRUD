@@ -728,6 +728,16 @@ export class MembershipsService {
     return [...new Set(docs.map((d) => String(d.planId)).filter(Boolean))];
   }
 
+  /** Plan con sedes (>0): habilita analítica por ciudad en el dashboard admin. */
+  async isBranchesAnalyticsEnabledForCompany(companyId: string): Promise<boolean> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return false;
+    const m = await this.getActiveMembershipForCompany(cid);
+    if (!m) return false;
+    const plan = await this.plansService.findOneById(m.planId);
+    return this.resolveMaxBranchesLimit(m, plan) > 0;
+  }
+
   /**
    * Resumen para dashboard del administrador de empresa (membresía activa y uso de checks).
    */

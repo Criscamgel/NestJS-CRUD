@@ -1,6 +1,7 @@
 import { Check, CheckSchema } from './entities/check.entity';
 import { Module } from '@nestjs/common';
 import { CheckService } from './check.service';
+import { CheckAnalyticsService } from './check-analytics.service';
 import { CheckController } from './check.controller';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -15,7 +16,7 @@ import {
 
 @Module({
   controllers: [CheckController],
-  providers: [CheckService],
+  providers: [CheckService, CheckAnalyticsService],
   imports: [
     ConfigModule,
     CommonModule,
