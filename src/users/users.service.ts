@@ -13,7 +13,7 @@ import { Company } from '../company/entities/company.entity';
 import { Model } from 'mongoose';
 import { CounterId } from 'src/common/entities/counter-id.entity';
 import { isMongoDuplicateKeyError } from 'src/common/utils/mongo-errors';
-import { getFrontendBaseUrl } from 'src/auth/auth.utils';
+import { getFrontendBaseUrl, normalizeAuthEmail } from 'src/auth/auth.utils';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from 'src/email/email.service';
@@ -186,6 +186,17 @@ export class UsersService {
     }
   }
 
+  /** Impide registro u onboarding si el correo ya pertenece a una cuenta. */
+  async assertEmailAvailable(email: string): Promise<void> {
+    const emailNorm = normalizeAuthEmail(email);
+    const existing = await this.userModel.findOne({ email: emailNorm }).select('id').lean();
+    if (existing) {
+      throw new ConflictException(
+        'Este correo ya está registrado en Cheky. Inicia sesión con tu cuenta o usa otro correo.',
+      );
+    }
+  }
+
   /**
    * Alta de admin de empresa tras pago en landing (contraseña ya definida; sin correo de bienvenida).
    */
@@ -197,11 +208,8 @@ export class UsersService {
     password: string;
     companyId: string;
   }) {
-    const emailNorm = params.email.toLowerCase().trim();
-    const dupEmail = await this.userModel.findOne({ email: emailNorm }).lean();
-    if (dupEmail) {
-      throw new ConflictException('Ya existe un usuario con este correo');
-    }
+    const emailNorm = normalizeAuthEmail(params.email);
+    await this.assertEmailAvailable(emailNorm);
     const docNorm = params.document.trim();
     const dupDoc = await this.userModel.findOne({ document: docNorm }).lean();
     if (dupDoc) {

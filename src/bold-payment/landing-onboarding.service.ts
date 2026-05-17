@@ -152,6 +152,8 @@ export class LandingOnboardingService {
       );
     }
 
+    await this.usersService.assertEmailAvailable(emailNorm);
+
     intent.landingOnboardingEmail = emailNorm;
     await intent.save();
 
@@ -242,6 +244,7 @@ export class LandingOnboardingService {
     const intent = await this.loadIntentForOnboarding(decoded);
 
     const emailNorm = normalizeAuthEmail(String(decoded.email));
+    await this.usersService.assertEmailAvailable(emailNorm);
 
     const cityId = dto.company.city.trim();
     const sectorId = dto.company.sector.trim();
