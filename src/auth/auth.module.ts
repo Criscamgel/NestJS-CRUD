@@ -10,6 +10,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { EmailModule } from 'src/email/email.module';
 import { UsersModule } from '../users/users.module';
 import { BlacklistedToken, BlacklistedTokenSchema } from './entities/blacklisted-token.entity';
+import { MembershipsModule } from 'src/memberships/memberships.module';
 
 @Module({
   controllers: [AuthController],
@@ -19,6 +20,7 @@ import { BlacklistedToken, BlacklistedTokenSchema } from './entities/blacklisted
         ConfigModule,
         CommonModule,
         forwardRef(() => UsersModule),
+        forwardRef(() => MembershipsModule),
         MongooseModule.forFeature([
           {
             name: BlacklistedToken.name,

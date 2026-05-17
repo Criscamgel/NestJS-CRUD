@@ -5,8 +5,10 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
 import { ConfigService } from "@nestjs/config";
 import { JwtPayload } from "../interfaces/JwtPayload";
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { Inject, Injectable, UnauthorizedException, forwardRef } from "@nestjs/common";
 import { BlacklistedToken } from "../entities/blacklisted-token.entity";
+import { MembershipsService } from "src/memberships/memberships.service";
+import { isUserMarkedInactive } from "../auth.utils";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,6 +18,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         private readonly userModel: Model<User>,
         @InjectModel(BlacklistedToken.name)
         private readonly blacklistedTokenModel: Model<BlacklistedToken>,
+        @Inject(forwardRef(() => MembershipsService))
+        private readonly membershipsService: MembershipsService,
         configService: ConfigService
     ) {
         super({
@@ -37,10 +41,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         }
 
         const { id } = payload;
-        const user = await this.userModel.findOne({ id });
+        let user = await this.userModel.findOne({ id });
 
         if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
-        if (!user.isActive) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+
+        if (isUserMarkedInactive(user.isActive) && user.company) {
+          await this.membershipsService.ensureCompanyUsersActiveWhenMembershipValid(
+            String(user.company),
+          );
+          user = await this.userModel.findOne({ id });
+        }
+
+        if (!user || isUserMarkedInactive(user.isActive)) {
+          throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
+        }
 
         return user;
     }

@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -28,6 +30,7 @@ import {
   isUserMarkedInactive,
   normalizeAuthEmail,
 } from './auth.utils';
+import { MembershipsService } from 'src/memberships/memberships.service';
 
 @Injectable()
 export class AuthService {
@@ -38,6 +41,8 @@ export class AuthService {
     private readonly blacklistedTokenModel: Model<BlacklistedToken>,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
+    @Inject(forwardRef(() => MembershipsService))
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   private getJwtToken(payload: JwtPayload) {
@@ -51,16 +56,27 @@ export class AuthService {
     const { password, email } = loginUserDto;
     const emailNorm = normalizeAuthEmail(email);
 
-    const user = await this.userModel
+    let user = await this.userModel
       .findOne({ email: emailNorm })
-      .select('email password id isActive')
+      .select('email password id isActive company')
       .lean();
 
     if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
     // Antes de la contraseña: si la cuenta está desactivada, mensaje claro (evita confundir con credenciales incorrectas)
     if (isUserMarkedInactive(user.isActive)) {
-      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+      if (user.company) {
+        await this.membershipsService.ensureCompanyUsersActiveWhenMembershipValid(
+          String(user.company),
+        );
+        user = await this.userModel
+          .findOne({ email: emailNorm })
+          .select('email password id isActive company')
+          .lean();
+      }
+      if (!user || isUserMarkedInactive(user.isActive)) {
+        throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+      }
     }
 
     if (!bcrypt.compareSync(password, user.password))

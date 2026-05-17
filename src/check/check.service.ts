@@ -15,6 +15,7 @@ import { FootPrint } from './interfaces/footPrint.interface';
 import { InjectModel } from '@nestjs/mongoose';
 import { CounterId } from 'src/common/entities/counter-id.entity';
 import { User } from 'src/users/entities/user.entity';
+import { CompanyBranch } from 'src/company-branch/entities/company-branch.entity';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import {
   buildPaginationMeta,
@@ -28,6 +29,7 @@ import {
   resolveRiskSealScoringUrl,
 } from 'src/check/utils/riskseal-request.util';
 import { trustScorePercentFromSnapshot } from 'src/check/utils/trust-score-from-snapshot.util';
+import { applyCheckSensitiveMask } from 'src/check/utils/check-sensitive-data.util';
 
 @Injectable()
 export class CheckService {
@@ -39,6 +41,8 @@ export class CheckService {
     private readonly counterIdModel: Model<any>,
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
+    @InjectModel(CompanyBranch.name)
+    private readonly companyBranchModel: Model<CompanyBranch>,
     private readonly http: AxiosAdapter,
     private readonly membershipsService: MembershipsService,
   ) {}
@@ -83,6 +87,18 @@ export class CheckService {
     };
   }
 
+  private maskCheckRecord<T extends Record<string, unknown>>(check: T) {
+    return applyCheckSensitiveMask({
+      ...check,
+      email: typeof check.email === 'string' ? check.email : undefined,
+      documentNumber:
+        typeof check.documentNumber === 'string'
+          ? check.documentNumber
+          : undefined,
+      createdAt: check.createdAt as Date | string | undefined,
+    });
+  }
+
   private buildSearchFilter(
     paginationQuery: PaginationQueryDto,
   ): Record<string, unknown> {
@@ -93,6 +109,101 @@ export class CheckService {
       'mobile',
       'documentNumber',
     ]);
+  }
+
+  /** Filtro por empresa en documentos de check (string / número legacy). */
+  private companyIdOnCheckFilter(companyId: string): Record<string, unknown> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { companyId: '__invalid_company__' };
+    if (/^\d+$/.test(cid)) {
+      return { companyId: { $in: [cid, Number(cid)] } };
+    }
+    return { companyId: cid };
+  }
+
+  /** Miembros de la empresa (incluye inactivos) para checks legacy sin `companyId`. */
+  private companyMembersUserFilter(
+    companyId: string,
+  ): Record<string, unknown> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return { company: '__invalid_company__' };
+    const companyPart = /^\d+$/.test(cid)
+      ? { company: { $in: [cid, Number(cid)] } }
+      : { company: cid };
+    return {
+      ...companyPart,
+      $nor: [
+        { roles: 'superAdmin' },
+        { roles: { $in: ['superAdmin'] } },
+      ],
+    };
+  }
+
+  private async enrichChecksForCompanyAdminList(
+    checks: Array<Record<string, unknown>>,
+  ): Promise<Array<Record<string, unknown>>> {
+    if (checks.length === 0) return checks;
+
+    const creatorIds = [
+      ...new Set(
+        checks
+          .map((c) =>
+            c.createdByUserId != null ? String(c.createdByUserId) : '',
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (creatorIds.length === 0) {
+      return checks.map((c) => ({ ...c, authorEmail: null, branchName: null }));
+    }
+
+    const users = await this.userModel
+      .find({ id: { $in: creatorIds } })
+      .select('id email branchId')
+      .lean()
+      .exec();
+    const userById = new Map(
+      users.map((u) => [String((u as { id?: string }).id), u]),
+    );
+
+    const branchIds = [
+      ...new Set(
+        users
+          .map((u) =>
+            (u as { branchId?: string }).branchId != null
+              ? String((u as { branchId?: string }).branchId)
+              : '',
+          )
+          .filter(Boolean),
+      ),
+    ];
+    const branchById = new Map<string, string>();
+    if (branchIds.length > 0) {
+      const branches = await this.companyBranchModel
+        .find({ id: { $in: branchIds } })
+        .select('id name')
+        .lean()
+        .exec();
+      for (const b of branches) {
+        const id = String((b as { id?: string }).id);
+        const name = String((b as { name?: string }).name ?? '').trim();
+        if (id && name) branchById.set(id, name);
+      }
+    }
+
+    return checks.map((c) => {
+      const creator = userById.get(String(c.createdByUserId ?? ''));
+      const bid =
+        creator && (creator as { branchId?: string }).branchId != null
+          ? String((creator as { branchId?: string }).branchId)
+          : '';
+      const branchName = bid ? branchById.get(bid) ?? null : null;
+      return {
+        ...c,
+        authorEmail: (creator as { email?: string })?.email ?? null,
+        branchName,
+      };
+    });
   }
 
   private assertCanAccessCheck(
@@ -192,9 +303,13 @@ export class CheckService {
           trustScore: trustScorePercentFromSnapshot(snapshot),
         });
 
+        let checksQuotaExhausted = false;
         if (!isSuperAdmin && actor.company) {
           try {
-            await this.membershipsService.incrementCheckUsage(actor.company);
+            const usage = await this.membershipsService.incrementCheckUsage(
+              actor.company,
+            );
+            checksQuotaExhausted = usage.checksQuotaExhausted;
           } catch (quotaErr) {
             await this.checkModel.deleteOne({ _id: check._id });
             throw quotaErr;
@@ -203,7 +318,7 @@ export class CheckService {
 
         return {
           message: 'Check creado exitosamente',
-          data: { check, data } 
+          data: { check, data, checksQuotaExhausted },
         };
 
       } catch (error) {
@@ -229,26 +344,28 @@ export class CheckService {
       filter = Object.keys(searchFilter).length ? searchFilter : {};
     } else if (this.isCompanyAdminActor(actor) && actor.company) {
       const cid = this.normalizeCompanyId(actor.company);
-      const operators = await this.userModel
-        .find(this.normalCheckOperatorsUserFilter(cid))
+      const byCompany = this.companyIdOnCheckFilter(cid);
+      const members = await this.userModel
+        .find(this.companyMembersUserFilter(cid))
         .select('id')
         .lean()
         .exec();
-      const creatorIds = operators
+      const memberIds = members
         .map((u) => String((u as { id?: string }).id))
         .filter(Boolean);
-
-      if (creatorIds.length === 0) {
-        return {
-          data: [],
-          meta: buildPaginationMeta(0, page, limit),
-        };
-      }
-
-      const byCreators = { createdByUserId: { $in: creatorIds } };
+      const legacyScope =
+        memberIds.length > 0
+          ? {
+              companyId: { $exists: false },
+              createdByUserId: { $in: memberIds },
+            }
+          : null;
+      const companyScope = legacyScope
+        ? { $or: [byCompany, legacyScope] }
+        : byCompany;
       filter = Object.keys(searchFilter).length
-        ? { $and: [byCreators, searchFilter] }
-        : byCreators;
+        ? { $and: [companyScope, searchFilter] }
+        : companyScope;
     } else {
       const scope = { createdByUserId: actor.id };
       filter = Object.keys(searchFilter).length
@@ -256,7 +373,7 @@ export class CheckService {
         : scope;
     }
 
-    const [data, total] = await Promise.all([
+    const [rawData, total] = await Promise.all([
       this.checkModel
         .find(filter)
         .select('-riskSealResponse')
@@ -267,6 +384,18 @@ export class CheckService {
         .exec(),
       this.checkModel.countDocuments(filter),
     ]);
+
+    const listed =
+      this.isCompanyAdminActor(actor) && actor.company
+        ? await this.enrichChecksForCompanyAdminList(
+            rawData as unknown as Array<Record<string, unknown>>,
+          )
+        : rawData;
+
+    const data = (listed as Array<Record<string, unknown>>).map((item) =>
+      this.maskCheckRecord(item),
+    );
+
     return {
       data,
       meta: buildPaginationMeta(total, page, limit),
@@ -274,11 +403,11 @@ export class CheckService {
   }
 
   async findOneByPublicId(checkId: string, actor: User) {
-    const doc = await this.checkModel.findOne({ id: checkId }).exec();
-    this.assertCanAccessCheck(doc, actor);
+    const doc = await this.checkModel.findOne({ id: checkId }).lean().exec();
+    this.assertCanAccessCheck(doc as Check | null, actor);
     return {
       message: 'Check obtenido',
-      data: doc,
+      data: this.maskCheckRecord(doc as unknown as Record<string, unknown>),
     };
   }
 
