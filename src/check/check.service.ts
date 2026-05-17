@@ -29,6 +29,7 @@ import {
   resolveRiskSealScoringUrl,
 } from 'src/check/utils/riskseal-request.util';
 import { trustScorePercentFromSnapshot } from 'src/check/utils/trust-score-from-snapshot.util';
+import { applyCheckSensitiveMask } from 'src/check/utils/check-sensitive-data.util';
 
 @Injectable()
 export class CheckService {
@@ -84,6 +85,18 @@ export class CheckService {
       ],
       $or: [{ roles: { $in: ['user'] } }, { role: 'user' }],
     };
+  }
+
+  private maskCheckRecord<T extends Record<string, unknown>>(check: T) {
+    return applyCheckSensitiveMask({
+      ...check,
+      email: typeof check.email === 'string' ? check.email : undefined,
+      documentNumber:
+        typeof check.documentNumber === 'string'
+          ? check.documentNumber
+          : undefined,
+      createdAt: check.createdAt as Date | string | undefined,
+    });
   }
 
   private buildSearchFilter(
@@ -372,12 +385,16 @@ export class CheckService {
       this.checkModel.countDocuments(filter),
     ]);
 
-    const data =
+    const listed =
       this.isCompanyAdminActor(actor) && actor.company
         ? await this.enrichChecksForCompanyAdminList(
             rawData as unknown as Array<Record<string, unknown>>,
           )
         : rawData;
+
+    const data = (listed as Array<Record<string, unknown>>).map((item) =>
+      this.maskCheckRecord(item),
+    );
 
     return {
       data,
@@ -386,11 +403,11 @@ export class CheckService {
   }
 
   async findOneByPublicId(checkId: string, actor: User) {
-    const doc = await this.checkModel.findOne({ id: checkId }).exec();
-    this.assertCanAccessCheck(doc, actor);
+    const doc = await this.checkModel.findOne({ id: checkId }).lean().exec();
+    this.assertCanAccessCheck(doc as Check | null, actor);
     return {
       message: 'Check obtenido',
-      data: doc,
+      data: this.maskCheckRecord(doc as unknown as Record<string, unknown>),
     };
   }
 
