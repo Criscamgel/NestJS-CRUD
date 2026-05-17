@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -9,16 +10,21 @@ import {
   Query,
 } from '@nestjs/common';
 import { CheckService } from './check.service';
+import { CheckAnalyticsService } from './check-analytics.service';
 import { CreateCheckDto } from './dto/create-check.dto';
 import { UpdateCheckDto } from './dto/update-check.dto';
 import { Auth, GetUser } from 'src/auth/decorators';
+import { ValidRoles } from 'src/auth/interfaces';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import { User } from 'src/users/entities/user.entity';
 
 @Controller(['check', 'checks'])
 @Auth()
 export class CheckController {
-  constructor(private readonly checkService: CheckService) {}
+  constructor(
+    private readonly checkService: CheckService,
+    private readonly checkAnalyticsService: CheckAnalyticsService,
+  ) {}
 
   @Post()
   create(
@@ -34,6 +40,18 @@ export class CheckController {
     @GetUser() user: User,
   ) {
     return this.checkService.findAll(paginationQuery, user);
+  }
+
+  @Get('analytics/company')
+  @Auth(ValidRoles.admin)
+  getCompanyAnalytics(@GetUser() actor: User) {
+    const companyId = actor.company?.trim();
+    if (!companyId) {
+      throw new BadRequestException(
+        'Tu usuario no está vinculado a una empresa.',
+      );
+    }
+    return this.checkAnalyticsService.getCompanyAnalytics(companyId);
   }
 
   @Get(':checkId')

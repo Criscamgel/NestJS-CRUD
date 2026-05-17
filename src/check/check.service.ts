@@ -95,6 +95,7 @@ export class CheckService {
         typeof check.documentNumber === 'string'
           ? check.documentNumber
           : undefined,
+      mobile: typeof check.mobile === 'string' ? check.mobile : undefined,
       createdAt: check.createdAt as Date | string | undefined,
     });
   }
