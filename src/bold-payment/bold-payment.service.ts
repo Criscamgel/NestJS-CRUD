@@ -15,6 +15,14 @@ import { PlansService } from 'src/plans/plans.service';
 import { MembershipsService } from 'src/memberships/memberships.service';
 import { User } from 'src/users/entities/user.entity';
 import { EmailService } from 'src/email/email.service';
+import {
+  BOLD_MIN_TOTAL_AMOUNT_COP,
+  BOLD_MIN_TOTAL_AMOUNT_USD,
+} from 'src/common/constants/plan-currency.constants';
+import {
+  formatMoneyAmount,
+  normalizePlanCurrency,
+} from 'src/common/utils/money.util';
 
 const PAID_STATUSES = new Set(['APPROVED', 'PAID', 'paid', 'approved']);
 
@@ -23,9 +31,6 @@ function isPaidStatus(status: unknown): boolean {
   const s = String(status).trim();
   return PAID_STATUSES.has(s) || PAID_STATUSES.has(s.toUpperCase());
 }
-
-/** Mínimo documentado por Bold para links de pago en COP (tarjeta, PSE, Nequi, etc.). */
-const BOLD_MIN_TOTAL_AMOUNT_COP = 1000;
 
 @Injectable()
 export class BoldPaymentService {
@@ -135,10 +140,15 @@ export class BoldPaymentService {
   }
 
   private assertBoldMinimumCharge(totalAmount: number, currency: string): void {
-    const cur = (currency || 'COP').trim().toUpperCase();
+    const cur = normalizePlanCurrency(currency);
     if (cur === 'COP' && totalAmount < BOLD_MIN_TOTAL_AMOUNT_COP) {
       throw new BadRequestException(
-        `El total a cobrar (${totalAmount.toLocaleString('es-CO')} ${cur}) es menor al mínimo de Bold (${BOLD_MIN_TOTAL_AMOUNT_COP.toLocaleString('es-CO')} ${cur}). Ajusta el precio del plan o contacta a tu vendedor.`,
+        `El total a cobrar (${formatMoneyAmount(totalAmount, cur)}) es menor al mínimo de Bold (${formatMoneyAmount(BOLD_MIN_TOTAL_AMOUNT_COP, 'COP')}). Ajusta el precio del plan o contacta a tu vendedor.`,
+      );
+    }
+    if (cur === 'USD' && totalAmount < BOLD_MIN_TOTAL_AMOUNT_USD) {
+      throw new BadRequestException(
+        `El total a cobrar (${formatMoneyAmount(totalAmount, cur)}) es menor al mínimo de Bold (${formatMoneyAmount(BOLD_MIN_TOTAL_AMOUNT_USD, 'USD')}). Ajusta el precio del plan o contacta a tu vendedor.`,
       );
     }
   }
@@ -172,7 +182,7 @@ export class BoldPaymentService {
       }
     }
     if (ax.response?.status === 400) {
-      return `Bold rechazó el cobro (HTTP 400). El monto mínimo en COP suele ser ${BOLD_MIN_TOTAL_AMOUNT_COP.toLocaleString('es-CO')}.`;
+      return `Bold rechazó el cobro (HTTP 400). Revisa monto y moneda (USD mín. ${BOLD_MIN_TOTAL_AMOUNT_USD}, COP mín. ${BOLD_MIN_TOTAL_AMOUNT_COP}).`;
     }
     return ax.message || 'No se pudo crear el enlace de pago en Bold.';
   }
@@ -190,7 +200,7 @@ export class BoldPaymentService {
     if (totalAmount < 1 || !Number.isFinite(totalAmount)) {
       throw new BadRequestException('Monto del cobro inválido.');
     }
-    const currency = params.currency || 'COP';
+    const currency = normalizePlanCurrency(params.currency);
     this.assertBoldMinimumCharge(totalAmount, currency);
 
     /** Preferimos CLOSE con referencia estable para conciliación (además de texto legible en Bold). */
@@ -300,14 +310,14 @@ export class BoldPaymentService {
     }
     const plan = await this.loadPlanForPublicCheckout(normalizedPlanId);
     const amount = this.computeChargeAmount(plan);
-    const currency = plan.currency || 'COP';
+    const currency = normalizePlanCurrency(plan.currency);
     const ref = `CHEKY-LAND-${crypto.randomUUID()}`;
     this.logger.log(
       `Bold landing checkout start: planId=${String(plan.id)} planName=${plan.name} monthlyPrice=${plan.monthlyPrice} durationMonths=${plan.durationMonths} chargeAmount=${amount} currency=${currency} ref=${ref}`,
     );
     const callbackBase = this.callbackBaseForSource('landing');
     const callbackUrl = `${callbackBase}/?pagoBold=1`;
-    const amountLabel = `${amount.toLocaleString('es-CO')} ${currency}`.trim();
+    const amountLabel = formatMoneyAmount(amount, currency);
     const boldDescription =
       `${plan.name} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
 
@@ -362,11 +372,11 @@ export class BoldPaymentService {
     }
 
     const amount = this.computeChargeAmount(plan);
-    const currency = plan.currency || 'COP';
+    const currency = normalizePlanCurrency(plan.currency);
     const ref = `CHEKY-CO-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('company_admin');
     const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
-    const amountLabel = `${amount.toLocaleString('es-CO')} ${currency}`.trim();
+    const amountLabel = formatMoneyAmount(amount, currency);
     const boldDescription =
       `Cheky empresa — ${plan.name} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
 

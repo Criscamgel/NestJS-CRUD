@@ -24,6 +24,7 @@ import { CompanyService } from 'src/company/company.service';
 import { UsersService } from 'src/users/users.service';
 import { MembershipsService } from 'src/memberships/memberships.service';
 import { getFrontendBaseUrl, normalizeAuthEmail } from 'src/auth/auth.utils';
+import { normalizePlanCurrency } from 'src/common/utils/money.util';
 import {
   CompleteLandingOnboardingDto,
   RequestLandingAdminOnboardingDto,
@@ -179,7 +180,7 @@ export class LandingOnboardingService {
     const totalCharge = Math.round(
       Number(planDoc.monthlyPrice) * Number(planDoc.durationMonths),
     );
-    const currency = planDoc.currency || 'COP';
+    const currency = normalizePlanCurrency(planDoc.currency);
 
     const onboardingHtml = landingAdminOnboardingEmailTemplate(onboardingLink);
     const thankYouHtml = landingPlanThankYouEmailTemplate({

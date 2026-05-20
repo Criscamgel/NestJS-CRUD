@@ -17,7 +17,7 @@ export class BoldCheckoutIntent extends Document {
   @Prop({ required: true })
   amountTotal!: number;
 
-  @Prop({ default: 'COP' })
+  @Prop({ default: 'USD' })
   currency!: string;
 
   @Prop({ required: true })

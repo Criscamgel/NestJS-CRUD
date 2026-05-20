@@ -28,7 +28,7 @@ export class Plan extends Document {
   @Prop({ required: true, min: 0 })
   monthlyPrice!: number;
 
-  @Prop({ default: 'COP' })
+  @Prop({ default: 'USD' })
   currency!: string;
 
   @Prop({ default: true })
