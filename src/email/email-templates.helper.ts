@@ -454,8 +454,17 @@ export function landingPlanThankYouEmailTemplate(
     maxChecksPerMonth,
     totalCharge,
   } = payload;
-  const fmt = (n: number) =>
-    n.toLocaleString('es-CO', { maximumFractionDigits: 0 });
+  const fmt = (n: number) => {
+    const cur = (currency || 'USD').trim().toUpperCase();
+    if (cur === 'USD') {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0,
+      }).format(n);
+    }
+    return `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })} ${cur}`;
+  };
   const periodLabel =
     durationMonths === 1 ? '1 mes' : `${durationMonths} meses`;
 
@@ -475,8 +484,8 @@ export function landingPlanThankYouEmailTemplate(
     </p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px;">
       ${row('Plan', planName)}
-      ${row('Precio mensual', `$${fmt(monthlyPrice)} ${currency}`)}
-      ${row('Total pagado', `$${fmt(totalCharge)} ${currency}`)}
+      ${row('Precio mensual', fmt(monthlyPrice))}
+      ${row('Total pagado', fmt(totalCharge))}
       ${row('Vigencia', periodLabel)}
       ${row('Usuarios (rol usuario)', `Hasta ${fmt(maxUsers)}`)}
       ${row('Checks por mes', `Hasta ${fmt(maxChecksPerMonth)}`)}

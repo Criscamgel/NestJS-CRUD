@@ -23,6 +23,7 @@ import {
   buildRegexOrFilter,
   escapeRegex,
 } from 'src/common/utils/mongo-search';
+import { normalizePlanCurrency } from 'src/common/utils/money.util';
 
 @Injectable()
 export class PlansService {
@@ -50,7 +51,7 @@ export class PlansService {
         maxChecksPerMonth: dto.maxChecks,
         durationMonths: dto.durationMonths,
         monthlyPrice: dto.monthlyPrice,
-        currency: dto.currency ?? 'COP',
+        currency: normalizePlanCurrency(dto.currency),
         isVisible: dto.isVisible ?? true,
       });
       return {
@@ -239,7 +240,9 @@ export class PlansService {
     if (dto.maxChecks !== undefined) payload.maxChecksPerMonth = dto.maxChecks;
     if (dto.durationMonths !== undefined) payload.durationMonths = dto.durationMonths;
     if (dto.monthlyPrice !== undefined) payload.monthlyPrice = dto.monthlyPrice;
-    if (dto.currency !== undefined) payload.currency = dto.currency;
+    if (dto.currency !== undefined) {
+      payload.currency = normalizePlanCurrency(dto.currency);
+    }
     if (dto.isVisible !== undefined) payload.isVisible = dto.isVisible;
 
     try {
@@ -313,6 +316,7 @@ export class PlansService {
       maxBranches,
       maxChecks: maxChecksPerMonth,
       isVisible,
+      currency: normalizePlanCurrency(o.currency as string | undefined),
     };
   }
 
