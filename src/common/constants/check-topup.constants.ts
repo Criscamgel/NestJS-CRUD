@@ -5,12 +5,13 @@ export const CHECK_TOPUP_MIN_QUANTITY = 1;
 
 export const CHECK_TOPUP_MAX_QUANTITY = 500;
 
-export function computeChecksTopupTotalUsd(quantity: number): number {
+/** Subtotal exacto (2 decimales) para mostrar en UI. */
+export function computeChecksTopupSubtotalUsd(quantity: number): number {
   const q = Math.max(0, Math.floor(Number(quantity)));
   return Math.round(q * CHECK_TOPUP_UNIT_PRICE_USD * 100) / 100;
 }
 
-/** Monto enviado a Bold en USD (centavos enteros). */
-export function computeChecksTopupBoldAmountCents(quantity: number): number {
-  return Math.round(computeChecksTopupTotalUsd(quantity) * 100);
+/** Monto en USD (dólares con decimales) para Bold `total_amount` — no usar centavos. */
+export function computeChecksTopupBoldAmountUsd(quantity: number): number {
+  return computeChecksTopupSubtotalUsd(quantity);
 }

@@ -20,11 +20,11 @@ import {
   CHECK_TOPUP_MAX_QUANTITY,
   CHECK_TOPUP_MIN_QUANTITY,
   CHECK_TOPUP_UNIT_PRICE_USD,
-  computeChecksTopupBoldAmountCents,
-  computeChecksTopupTotalUsd,
+  computeChecksTopupBoldAmountUsd,
 } from 'src/common/constants/check-topup.constants';
 import {
   formatMoneyAmount,
+  formatMoneyAmountPrecise,
   normalizePlanCurrency,
 } from 'src/common/utils/money.util';
 
@@ -146,14 +146,13 @@ export class BoldPaymentService {
   private assertBoldMinimumCharge(
     totalAmount: number,
     currency: string,
-    opts?: { amountInUsdCents?: boolean },
+    opts?: { allowUsdDecimals?: boolean },
   ): void {
     const cur = normalizePlanCurrency(currency);
-    if (cur === 'USD' && opts?.amountInUsdCents) {
-      const minCents = Math.round(CHECK_TOPUP_UNIT_PRICE_USD * 100);
-      if (totalAmount < minCents) {
+    if (opts?.allowUsdDecimals && cur === 'USD') {
+      if (totalAmount < CHECK_TOPUP_UNIT_PRICE_USD) {
         throw new BadRequestException(
-          `El total a cobrar es menor al mínimo de Bold (${formatMoneyAmount(CHECK_TOPUP_UNIT_PRICE_USD, 'USD')} por check).`,
+          `El total a cobrar (${formatMoneyAmountPrecise(totalAmount, cur)}) es menor al precio mínimo por check.`,
         );
       }
       return;
@@ -206,18 +205,25 @@ export class BoldPaymentService {
     description: string;
     callbackUrl: string;
     reference: string;
-    /** Si true, `amount` son centavos USD (p. ej. 167 = $1.67). */
-    amountInUsdCents?: boolean;
+    /** USD con decimales (p. ej. 83.5). No enviar centavos como entero (8350). */
+    allowUsdDecimals?: boolean;
   }): Promise<{ url: string; payment_link: string }> {
     const url = this.resolveBoldOnlineLinkPrefix();
     const apiKey = this.getApiKey();
-    const totalAmount = Math.round(Number(params.amount));
-    if (totalAmount < 1 || !Number.isFinite(totalAmount)) {
+    const currency = normalizePlanCurrency(params.currency);
+    const raw = Number(params.amount);
+    const totalAmount =
+      params.allowUsdDecimals && currency === 'USD'
+        ? Math.round(raw * 100) / 100
+        : Math.round(raw);
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       throw new BadRequestException('Monto del cobro inválido.');
     }
-    const currency = normalizePlanCurrency(params.currency);
+    if (!params.allowUsdDecimals && totalAmount < 1) {
+      throw new BadRequestException('Monto del cobro inválido.');
+    }
     this.assertBoldMinimumCharge(totalAmount, currency, {
-      amountInUsdCents: params.amountInUsdCents,
+      allowUsdDecimals: params.allowUsdDecimals,
     });
 
     /** Preferimos CLOSE con referencia estable para conciliación (además de texto legible en Bold). */
@@ -459,13 +465,12 @@ export class BoldPaymentService {
       );
     }
 
-    const amountUsd = computeChecksTopupTotalUsd(qty);
-    const boldAmountCents = computeChecksTopupBoldAmountCents(qty);
+    const amountUsd = computeChecksTopupBoldAmountUsd(qty);
     const currency = 'USD';
     const ref = `CHEKY-CHK-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('checks_topup');
     const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
-    const amountLabel = formatMoneyAmount(amountUsd, currency);
+    const amountLabel = formatMoneyAmountPrecise(amountUsd, currency);
     const boldDescription =
       `Cheky — ${qty} checks adicionales — Total ${amountLabel} — Ref. ${ref}`.slice(
         0,
@@ -473,12 +478,12 @@ export class BoldPaymentService {
       );
 
     const bold = await this.callBoldCreateLink({
-      amount: boldAmountCents,
+      amount: amountUsd,
       currency,
       description: boldDescription,
       callbackUrl,
       reference: ref,
-      amountInUsdCents: true,
+      allowUsdDecimals: true,
     });
 
     await this.intentModel.create({
@@ -495,7 +500,7 @@ export class BoldPaymentService {
     });
 
     this.logger.log(
-      `Bold checks topup: companyId=${companyId} qty=${qty} amountUsd=${amountUsd} cents=${boldAmountCents} ref=${ref}`,
+      `Bold checks topup: companyId=${companyId} qty=${qty} amountUsd=${amountUsd} ref=${ref}`,
     );
 
     return {
