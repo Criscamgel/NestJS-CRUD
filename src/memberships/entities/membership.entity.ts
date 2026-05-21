@@ -49,6 +49,10 @@ export class Membership extends Document {
   @Prop({ default: 0, min: 0 })
   checksUsedInPeriod!: number;
 
+  /** Checks adicionales comprados (Bold); no modifica el plan en catálogo. */
+  @Prop({ default: 0, min: 0 })
+  checksTopupBonus!: number;
+
   @Prop()
   deactivatedAt?: Date;
 
