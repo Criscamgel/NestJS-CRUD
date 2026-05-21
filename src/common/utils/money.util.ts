@@ -1,12 +1,27 @@
-import { DEFAULT_PLAN_CURRENCY } from 'src/common/constants/plan-currency.constants';
+import {
+  DEFAULT_PLAN_CURRENCY,
+  findPlanCurrency,
+  resolvePlanCurrencyCode,
+} from 'src/common/catalog/plan-currencies.catalog';
 
 export function normalizePlanCurrency(raw?: string | null): string {
-  const t = (raw ?? '').trim().toUpperCase();
-  return t.length >= 3 ? t : DEFAULT_PLAN_CURRENCY;
+  return resolvePlanCurrencyCode(raw);
 }
 
-function localeForCurrency(currency: string): string {
-  return currency === 'USD' ? 'en-US' : 'es-CO';
+function intlLocaleForCurrency(code: string): string {
+  const map: Record<string, string> = {
+    USD: 'en-US',
+    COP: 'es-CO',
+    EUR: 'es-ES',
+    MXN: 'es-MX',
+    GBP: 'en-GB',
+    CAD: 'en-CA',
+    BRL: 'pt-BR',
+    ARS: 'es-AR',
+    CLP: 'es-CL',
+    PEN: 'es-PE',
+  };
+  return map[code] ?? 'en-US';
 }
 
 /** Etiqueta legible para UI, correos y descripción Bold. */
@@ -17,14 +32,18 @@ export function formatMoneyAmount(
   const cur = normalizePlanCurrency(currency);
   const n = Number(amount);
   if (!Number.isFinite(n)) return `— ${cur}`;
-  if (cur === 'USD') {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(n);
+  if (findPlanCurrency(cur)) {
+    try {
+      return new Intl.NumberFormat(intlLocaleForCurrency(cur), {
+        style: 'currency',
+        currency: cur,
+        maximumFractionDigits: 0,
+      }).format(n);
+    } catch {
+      /* fallback abajo */
+    }
   }
-  return `$${n.toLocaleString(localeForCurrency(cur), {
+  return `${n.toLocaleString(intlLocaleForCurrency(cur), {
     maximumFractionDigits: 0,
   })} ${cur}`;
 }
@@ -35,3 +54,5 @@ export function formatMonthlyPlanPrice(
 ): string {
   return `${formatMoneyAmount(monthlyPrice, currency)}/mes`;
 }
+
+export { DEFAULT_PLAN_CURRENCY };
