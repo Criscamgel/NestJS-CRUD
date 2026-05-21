@@ -17,6 +17,7 @@ import { Auth, GetUser } from 'src/auth/decorators';
 import { ValidRoles } from 'src/auth/interfaces';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import { User } from 'src/users/entities/user.entity';
+import { PLAN_CURRENCIES_CATALOG } from 'src/common/catalog/plan-currencies.catalog';
 
 @Controller('plans')
 export class PlansController {
@@ -44,6 +45,13 @@ export class PlansController {
   @Auth(ValidRoles.superAdmin)
   getAdminDashboardStats() {
     return this.plansService.getAdminDashboardStats();
+  }
+
+  /** Catálogo de monedas para formularios de plan (alineado con Bold). */
+  @Get('meta/currencies')
+  @Auth(ValidRoles.superAdmin)
+  listCurrencyOptions() {
+    return { success: true, data: [...PLAN_CURRENCIES_CATALOG] };
   }
 
   @Get()

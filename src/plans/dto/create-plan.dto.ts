@@ -1,6 +1,7 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsPositive,
   IsString,
@@ -9,6 +10,7 @@ import {
   IsNumber,
   IsOptional,
 } from 'class-validator';
+import { PLAN_CURRENCY_CODES } from 'src/common/catalog/plan-currencies.catalog';
 
 export class CreatePlanDto {
   @IsString()
@@ -45,8 +47,12 @@ export class CreatePlanDto {
   monthlyPrice!: number;
 
   @IsOptional()
-  @IsString()
-  @MinLength(3)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(PLAN_CURRENCY_CODES, {
+    message: `La moneda debe ser una de: ${PLAN_CURRENCY_CODES.join(', ')}`,
+  })
   currency?: string;
 
   /** Mostrar en el catálogo de planes (por defecto true en entidad). */

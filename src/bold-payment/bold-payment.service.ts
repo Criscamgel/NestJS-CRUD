@@ -15,10 +15,7 @@ import { PlansService } from 'src/plans/plans.service';
 import { MembershipsService } from 'src/memberships/memberships.service';
 import { User } from 'src/users/entities/user.entity';
 import { EmailService } from 'src/email/email.service';
-import {
-  BOLD_MIN_TOTAL_AMOUNT_COP,
-  BOLD_MIN_TOTAL_AMOUNT_USD,
-} from 'src/common/constants/plan-currency.constants';
+import { getBoldMinTotalAmount } from 'src/common/catalog/plan-currencies.catalog';
 import {
   formatMoneyAmount,
   normalizePlanCurrency,
@@ -141,14 +138,10 @@ export class BoldPaymentService {
 
   private assertBoldMinimumCharge(totalAmount: number, currency: string): void {
     const cur = normalizePlanCurrency(currency);
-    if (cur === 'COP' && totalAmount < BOLD_MIN_TOTAL_AMOUNT_COP) {
+    const min = getBoldMinTotalAmount(cur);
+    if (totalAmount < min) {
       throw new BadRequestException(
-        `El total a cobrar (${formatMoneyAmount(totalAmount, cur)}) es menor al mínimo de Bold (${formatMoneyAmount(BOLD_MIN_TOTAL_AMOUNT_COP, 'COP')}). Ajusta el precio del plan o contacta a tu vendedor.`,
-      );
-    }
-    if (cur === 'USD' && totalAmount < BOLD_MIN_TOTAL_AMOUNT_USD) {
-      throw new BadRequestException(
-        `El total a cobrar (${formatMoneyAmount(totalAmount, cur)}) es menor al mínimo de Bold (${formatMoneyAmount(BOLD_MIN_TOTAL_AMOUNT_USD, 'USD')}). Ajusta el precio del plan o contacta a tu vendedor.`,
+        `El total a cobrar (${formatMoneyAmount(totalAmount, cur)}) es menor al mínimo de Bold (${formatMoneyAmount(min, cur)}). Ajusta el precio del plan o contacta a tu vendedor.`,
       );
     }
   }
@@ -182,7 +175,7 @@ export class BoldPaymentService {
       }
     }
     if (ax.response?.status === 400) {
-      return `Bold rechazó el cobro (HTTP 400). Revisa monto y moneda (USD mín. ${BOLD_MIN_TOTAL_AMOUNT_USD}, COP mín. ${BOLD_MIN_TOTAL_AMOUNT_COP}).`;
+      return 'Bold rechazó el cobro (HTTP 400). Revisa monto y moneda del plan (debe ser una moneda soportada por tu cuenta Bold).';
     }
     return ax.message || 'No se pudo crear el enlace de pago en Bold.';
   }

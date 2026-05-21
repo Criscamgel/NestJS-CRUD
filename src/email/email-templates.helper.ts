@@ -1,5 +1,6 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { formatMoneyAmount } from 'src/common/utils/money.util';
 
 /** CID for inline logo attachment (must match nodemailer attachment.cid) */
 export const EMAIL_LOGO_CID = 'cheky-logo@cheky';
@@ -454,17 +455,7 @@ export function landingPlanThankYouEmailTemplate(
     maxChecksPerMonth,
     totalCharge,
   } = payload;
-  const fmt = (n: number) => {
-    const cur = (currency || 'USD').trim().toUpperCase();
-    if (cur === 'USD') {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0,
-      }).format(n);
-    }
-    return `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })} ${cur}`;
-  };
+  const fmt = (n: number) => formatMoneyAmount(n, currency);
   const periodLabel =
     durationMonths === 1 ? '1 mes' : `${durationMonths} meses`;
 
