@@ -17,6 +17,13 @@ import { User } from 'src/users/entities/user.entity';
 import { EmailService } from 'src/email/email.service';
 import { getBoldMinTotalAmount } from 'src/common/catalog/plan-currencies.catalog';
 import {
+  CHECK_TOPUP_MAX_QUANTITY,
+  CHECK_TOPUP_MIN_QUANTITY,
+  CHECK_TOPUP_UNIT_PRICE_USD,
+  computeChecksTopupBoldAmountCents,
+  computeChecksTopupTotalUsd,
+} from 'src/common/constants/check-topup.constants';
+import {
   formatMoneyAmount,
   normalizePlanCurrency,
 } from 'src/common/utils/money.util';
@@ -136,8 +143,21 @@ export class BoldPaymentService {
     return (ms * BigInt(1_000_000) + tenMinutesNs).toString();
   }
 
-  private assertBoldMinimumCharge(totalAmount: number, currency: string): void {
+  private assertBoldMinimumCharge(
+    totalAmount: number,
+    currency: string,
+    opts?: { amountInUsdCents?: boolean },
+  ): void {
     const cur = normalizePlanCurrency(currency);
+    if (cur === 'USD' && opts?.amountInUsdCents) {
+      const minCents = Math.round(CHECK_TOPUP_UNIT_PRICE_USD * 100);
+      if (totalAmount < minCents) {
+        throw new BadRequestException(
+          `El total a cobrar es menor al mínimo de Bold (${formatMoneyAmount(CHECK_TOPUP_UNIT_PRICE_USD, 'USD')} por check).`,
+        );
+      }
+      return;
+    }
     const min = getBoldMinTotalAmount(cur);
     if (totalAmount < min) {
       throw new BadRequestException(
@@ -186,6 +206,8 @@ export class BoldPaymentService {
     description: string;
     callbackUrl: string;
     reference: string;
+    /** Si true, `amount` son centavos USD (p. ej. 167 = $1.67). */
+    amountInUsdCents?: boolean;
   }): Promise<{ url: string; payment_link: string }> {
     const url = this.resolveBoldOnlineLinkPrefix();
     const apiKey = this.getApiKey();
@@ -194,7 +216,9 @@ export class BoldPaymentService {
       throw new BadRequestException('Monto del cobro inválido.');
     }
     const currency = normalizePlanCurrency(params.currency);
-    this.assertBoldMinimumCharge(totalAmount, currency);
+    this.assertBoldMinimumCharge(totalAmount, currency, {
+      amountInUsdCents: params.amountInUsdCents,
+    });
 
     /** Preferimos CLOSE con referencia estable para conciliación (además de texto legible en Bold). */
     const body = {
@@ -403,6 +427,90 @@ export class BoldPaymentService {
     };
   }
 
+  async startChecksTopupCheckout(quantity: number, actor: User) {
+    const qty = Math.floor(Number(quantity));
+    if (
+      !Number.isFinite(qty) ||
+      qty < CHECK_TOPUP_MIN_QUANTITY ||
+      qty > CHECK_TOPUP_MAX_QUANTITY
+    ) {
+      throw new BadRequestException(
+        `La cantidad debe estar entre ${CHECK_TOPUP_MIN_QUANTITY} y ${CHECK_TOPUP_MAX_QUANTITY} checks.`,
+      );
+    }
+
+    const roles = actor.roles || [];
+    const legacy = (actor as { role?: string }).role;
+    if (roles.includes('superAdmin') || legacy === 'superAdmin') {
+      throw new BadRequestException(
+        'Los super administradores no pueden comprar checks desde el panel de empresa.',
+      );
+    }
+    const companyId = actor.company?.trim();
+    if (!companyId) {
+      throw new BadRequestException('Tu cuenta no está vinculada a una empresa.');
+    }
+
+    const membership =
+      await this.membershipsService.getActiveMembershipForCompany(companyId);
+    if (!membership) {
+      throw new BadRequestException(
+        'Necesitas un plan activo para comprar checks adicionales.',
+      );
+    }
+
+    const amountUsd = computeChecksTopupTotalUsd(qty);
+    const boldAmountCents = computeChecksTopupBoldAmountCents(qty);
+    const currency = 'USD';
+    const ref = `CHEKY-CHK-${crypto.randomUUID()}`;
+    const callbackBase = this.callbackBaseForSource('checks_topup');
+    const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
+    const amountLabel = formatMoneyAmount(amountUsd, currency);
+    const boldDescription =
+      `Cheky — ${qty} checks adicionales — Total ${amountLabel} — Ref. ${ref}`.slice(
+        0,
+        500,
+      );
+
+    const bold = await this.callBoldCreateLink({
+      amount: boldAmountCents,
+      currency,
+      description: boldDescription,
+      callbackUrl,
+      reference: ref,
+      amountInUsdCents: true,
+    });
+
+    await this.intentModel.create({
+      ref,
+      planId: String(membership.planId),
+      amountTotal: amountUsd,
+      currency,
+      source: 'checks_topup',
+      companyId,
+      initiatedByUserId: actor.id,
+      checksQuantity: qty,
+      boldPaymentLinkId: bold.payment_link,
+      status: 'pending',
+    });
+
+    this.logger.log(
+      `Bold checks topup: companyId=${companyId} qty=${qty} amountUsd=${amountUsd} cents=${boldAmountCents} ref=${ref}`,
+    );
+
+    return {
+      message: 'Redirigiendo a Bold',
+      data: {
+        redirectUrl: bold.url,
+        paymentLink: bold.payment_link,
+        reference: ref,
+        quantity: qty,
+        amountUsd,
+        currency,
+      },
+    };
+  }
+
   async confirmByPaymentLink(paymentLinkId: string) {
     if (!paymentLinkId?.trim()) {
       throw new BadRequestException('paymentLink es obligatorio');
@@ -422,9 +530,48 @@ export class BoldPaymentService {
       throw new BadRequestException('No hay una orden interna asociada a este enlace.');
     }
     if (intent.status === 'completed') {
+      if (intent.source === 'checks_topup' && intent.checksQuantity) {
+        const n = intent.checksQuantity;
+        const word = n === 1 ? 'check' : 'checks';
+        return {
+          message: `Se han añadido ${n} ${word} a tu plan.`,
+          data: {
+            fulfilled: true,
+            source: intent.source,
+            checksAdded: n,
+          },
+        };
+      }
       return {
-        message: 'El plan ya estaba activado.',
+        message:
+          intent.source === 'company_admin'
+            ? 'El plan ya estaba activado.'
+            : 'Este pago ya fue procesado.',
         data: { fulfilled: true, source: intent.source },
+      };
+    }
+
+    if (intent.source === 'checks_topup') {
+      const companyId = intent.companyId?.trim();
+      const qty = intent.checksQuantity ?? 0;
+      if (!companyId || qty < 1) {
+        throw new BadRequestException('Datos de compra de checks incompletos.');
+      }
+      const { checksAdded } =
+        await this.membershipsService.addPurchasedChecksToActiveMembership(
+          companyId,
+          qty,
+        );
+      intent.status = 'completed';
+      await intent.save();
+      const word = checksAdded === 1 ? 'check' : 'checks';
+      return {
+        message: `Se han añadido ${checksAdded} ${word} a tu plan.`,
+        data: {
+          fulfilled: true,
+          source: 'checks_topup',
+          checksAdded,
+        },
       };
     }
 

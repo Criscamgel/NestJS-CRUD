@@ -585,6 +585,36 @@ export class MembershipsService {
     return monthly || period;
   }
 
+  /**
+   * Tras pago Bold por checks adicionales: amplía cupo mensual y del periodo vigente.
+   */
+  async addPurchasedChecksToActiveMembership(
+    companyId: string,
+    quantity: number,
+  ): Promise<{ checksAdded: number }> {
+    const qty = Math.floor(Number(quantity));
+    if (!Number.isFinite(qty) || qty < 1) {
+      throw new BadRequestException('Cantidad de checks inválida.');
+    }
+    await this.syncMonthForCompany(companyId);
+    const m = await this.getActiveMembershipForCompany(companyId);
+    if (!m) {
+      throw new BadRequestException(
+        'No hay una membresía activa para acreditar los checks.',
+      );
+    }
+    await this.membershipModel.updateOne(
+      { _id: m._id },
+      {
+        $inc: {
+          maxChecksForPeriodSnapshot: qty,
+          maxChecksPerMonthSnapshot: qty,
+        },
+      },
+    );
+    return { checksAdded: qty };
+  }
+
   /** Incremento atómico tras persistir el check. */
   async incrementCheckUsage(
     companyId: string,
