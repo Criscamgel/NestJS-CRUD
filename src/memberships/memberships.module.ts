@@ -13,6 +13,10 @@ import {
   CompanyBranch,
   CompanyBranchSchema,
 } from 'src/company-branch/entities/company-branch.entity';
+import {
+  BoldCheckoutIntent,
+  BoldCheckoutIntentSchema,
+} from 'src/bold-payment/entities/bold-checkout-intent.entity';
 
 @Module({
   imports: [
@@ -25,6 +29,7 @@ import {
       { name: Company.name, schema: CompanySchema },
       { name: User.name, schema: UserSchema },
       { name: CompanyBranch.name, schema: CompanyBranchSchema },
+      { name: BoldCheckoutIntent.name, schema: BoldCheckoutIntentSchema },
     ]),
   ],
   controllers: [MembershipsController],

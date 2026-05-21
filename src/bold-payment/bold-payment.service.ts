@@ -516,6 +516,28 @@ export class BoldPaymentService {
     };
   }
 
+  private async fulfillChecksTopupIntent(
+    intent: BoldCheckoutIntent,
+  ): Promise<{ checksAdded: number }> {
+    const companyId = intent.companyId?.trim();
+    const qty = intent.checksQuantity ?? 0;
+    if (!companyId || qty < 1) {
+      throw new BadRequestException('Datos de compra de checks incompletos.');
+    }
+    if (intent.checksTopupAppliedAt) {
+      return { checksAdded: qty };
+    }
+    const { checksAdded } =
+      await this.membershipsService.addPurchasedChecksToActiveMembership(
+        companyId,
+        qty,
+      );
+    intent.checksTopupAppliedAt = new Date();
+    intent.status = 'completed';
+    await intent.save();
+    return { checksAdded };
+  }
+
   async confirmByPaymentLink(paymentLinkId: string) {
     if (!paymentLinkId?.trim()) {
       throw new BadRequestException('paymentLink es obligatorio');
@@ -536,14 +558,14 @@ export class BoldPaymentService {
     }
     if (intent.status === 'completed') {
       if (intent.source === 'checks_topup' && intent.checksQuantity) {
-        const n = intent.checksQuantity;
-        const word = n === 1 ? 'check' : 'checks';
+        const { checksAdded } = await this.fulfillChecksTopupIntent(intent);
+        const word = checksAdded === 1 ? 'check' : 'checks';
         return {
-          message: `Se han añadido ${n} ${word} a tu plan.`,
+          message: `Se han añadido ${checksAdded} ${word} a tu plan.`,
           data: {
             fulfilled: true,
             source: intent.source,
-            checksAdded: n,
+            checksAdded,
           },
         };
       }
@@ -557,18 +579,7 @@ export class BoldPaymentService {
     }
 
     if (intent.source === 'checks_topup') {
-      const companyId = intent.companyId?.trim();
-      const qty = intent.checksQuantity ?? 0;
-      if (!companyId || qty < 1) {
-        throw new BadRequestException('Datos de compra de checks incompletos.');
-      }
-      const { checksAdded } =
-        await this.membershipsService.addPurchasedChecksToActiveMembership(
-          companyId,
-          qty,
-        );
-      intent.status = 'completed';
-      await intent.save();
+      const { checksAdded } = await this.fulfillChecksTopupIntent(intent);
       const word = checksAdded === 1 ? 'check' : 'checks';
       return {
         message: `Se han añadido ${checksAdded} ${word} a tu plan.`,

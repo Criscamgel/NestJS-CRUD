@@ -23,6 +23,7 @@ import {
   resolvePagination,
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
+import { BoldCheckoutIntent } from 'src/bold-payment/entities/bold-checkout-intent.entity';
 
 function monthKey(d = new Date()): string {
   const y = d.getFullYear();
@@ -57,6 +58,8 @@ export class MembershipsService {
     private readonly companyBranchModel: Model<CompanyBranch>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<CounterId>,
+    @InjectModel(BoldCheckoutIntent.name)
+    private readonly boldCheckoutIntentModel: Model<BoldCheckoutIntent>,
     @Inject(forwardRef(() => PlansService))
     private readonly plansService: PlansService,
   ) {}
@@ -123,6 +126,25 @@ export class MembershipsService {
     return MembershipsService.LEGACY_PLAN_BRANCH_CAP;
   }
 
+  private checksTopupBonusOf(m: { checksTopupBonus?: number | null }): number {
+    const n = Math.floor(Number(m.checksTopupBonus ?? 0));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  private effectiveMaxChecksPerMonth(m: {
+    maxChecksPerMonthSnapshot?: number;
+    checksTopupBonus?: number | null;
+  }): number {
+    return (m.maxChecksPerMonthSnapshot ?? 0) + this.checksTopupBonusOf(m);
+  }
+
+  private effectiveMaxChecksForPeriod(m: {
+    maxChecksForPeriodSnapshot?: number;
+    checksTopupBonus?: number | null;
+  }): number {
+    return (m.maxChecksForPeriodSnapshot ?? 0) + this.checksTopupBonusOf(m);
+  }
+
   /** Snapshots de membresía alineados con la definición actual del plan en catálogo. */
   private snapshotSetFromPlan(plan: Plan): MembershipPlanSnapshotSet | null {
     const maxPeriod = plan.maxChecksPerMonth * plan.durationMonths;
@@ -161,7 +183,20 @@ export class MembershipsService {
     if (!snap || this.snapshotsMatchPlan(m, snap)) {
       return m;
     }
-    await this.membershipModel.updateOne({ _id: m._id }, { $set: snap });
+    const periodExtra = Math.max(
+      0,
+      (m.maxChecksForPeriodSnapshot ?? 0) - snap.maxChecksForPeriodSnapshot,
+    );
+    const monthExtra = Math.max(
+      0,
+      (m.maxChecksPerMonthSnapshot ?? 0) - snap.maxChecksPerMonthSnapshot,
+    );
+    const legacyTopup = Math.max(periodExtra, monthExtra);
+    const checksTopupBonus = Math.max(this.checksTopupBonusOf(m), legacyTopup);
+    await this.membershipModel.updateOne(
+      { _id: m._id },
+      { $set: { ...snap, checksTopupBonus } },
+    );
     const fresh = await this.membershipModel.findById(m._id).exec();
     return fresh ?? m;
   }
@@ -558,12 +593,14 @@ export class MembershipsService {
       );
     }
 
-    if (m.checksUsedInCurrentMonth >= m.maxChecksPerMonthSnapshot) {
+    const maxMonth = this.effectiveMaxChecksPerMonth(m);
+    const maxPeriod = this.effectiveMaxChecksForPeriod(m);
+    if (m.checksUsedInCurrentMonth >= maxMonth) {
       throw new ForbiddenException(
         'Agotaste todos los checks del mes de tu plan. Contacta al administrador de tu empresa para mejorar el plan.',
       );
     }
-    if (m.checksUsedInPeriod >= m.maxChecksForPeriodSnapshot) {
+    if (m.checksUsedInPeriod >= maxPeriod) {
       throw new ForbiddenException(
         'Agotaste todos los checks de tu plan. Contacta al administrador de tu empresa para mejorar el plan.',
       );
@@ -575,13 +612,14 @@ export class MembershipsService {
     maxChecksPerMonthSnapshot?: number;
     checksUsedInPeriod?: number;
     maxChecksForPeriodSnapshot?: number;
+    checksTopupBonus?: number | null;
   }): boolean {
+    const maxMonth = this.effectiveMaxChecksPerMonth(m);
+    const maxPeriod = this.effectiveMaxChecksForPeriod(m);
     const monthly =
-      (m.maxChecksPerMonthSnapshot ?? 0) > 0 &&
-      (m.checksUsedInCurrentMonth ?? 0) >= (m.maxChecksPerMonthSnapshot ?? 0);
+      maxMonth > 0 && (m.checksUsedInCurrentMonth ?? 0) >= maxMonth;
     const period =
-      (m.maxChecksForPeriodSnapshot ?? 0) > 0 &&
-      (m.checksUsedInPeriod ?? 0) >= (m.maxChecksForPeriodSnapshot ?? 0);
+      maxPeriod > 0 && (m.checksUsedInPeriod ?? 0) >= maxPeriod;
     return monthly || period;
   }
 
@@ -605,12 +643,7 @@ export class MembershipsService {
     }
     await this.membershipModel.updateOne(
       { _id: m._id },
-      {
-        $inc: {
-          maxChecksForPeriodSnapshot: qty,
-          maxChecksPerMonthSnapshot: qty,
-        },
-      },
+      { $inc: { checksTopupBonus: qty } },
     );
     return { checksAdded: qty };
   }
@@ -624,13 +657,15 @@ export class MembershipsService {
       throw new ForbiddenException('Membresía no disponible.');
     }
 
+    const maxMonth = this.effectiveMaxChecksPerMonth(m);
+    const maxPeriod = this.effectiveMaxChecksForPeriod(m);
     const result = await this.membershipModel.updateOne(
       {
         _id: m._id,
         status: MembershipStatus.ACTIVE,
         expiresAt: { $gt: new Date() },
-        checksUsedInCurrentMonth: { $lt: m.maxChecksPerMonthSnapshot },
-        checksUsedInPeriod: { $lt: m.maxChecksForPeriodSnapshot },
+        checksUsedInCurrentMonth: { $lt: maxMonth },
+        checksUsedInPeriod: { $lt: maxPeriod },
       },
       { $inc: { checksUsedInCurrentMonth: 1, checksUsedInPeriod: 1 } },
     );
@@ -769,9 +804,39 @@ export class MembershipsService {
   }
 
   /**
+   * Acredita top-ups pagados en Bold que quedaron `completed` sin `checksTopupAppliedAt`
+   * (p. ej. por reconciliación de snapshots que borraba el cupo antes de `checksTopupBonus`).
+   */
+  private async healUnappliedChecksTopupIntents(companyId: string): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return;
+    const intents = await this.boldCheckoutIntentModel
+      .find({
+        companyId: cid,
+        source: 'checks_topup',
+        status: 'completed',
+        checksQuantity: { $gte: 1 },
+        $or: [
+          { checksTopupAppliedAt: { $exists: false } },
+          { checksTopupAppliedAt: null },
+        ],
+      })
+      .limit(10)
+      .exec();
+    for (const intent of intents) {
+      const qty = Math.floor(Number(intent.checksQuantity ?? 0));
+      if (qty < 1) continue;
+      await this.addPurchasedChecksToActiveMembership(cid, qty);
+      intent.checksTopupAppliedAt = new Date();
+      await intent.save();
+    }
+  }
+
+  /**
    * Resumen para dashboard del administrador de empresa (membresía activa y uso de checks).
    */
   async getDashboardSummaryForCompany(companyId: string) {
+    await this.healUnappliedChecksTopupIntents(companyId);
     const m = await this.getActiveMembershipForCompany(companyId);
     const companyUsersCount = await this.userModel.countDocuments({
       ...this.userCompanyFilter(companyId),
@@ -788,6 +853,10 @@ export class MembershipsService {
         checksPendingMonthly: null as number | null,
         checksUsedInCurrentMonth: null as number | null,
         maxChecksPerMonthSnapshot: null as number | null,
+        maxChecksPerMonthEffective: null as number | null,
+        maxChecksForPeriodEffective: null as number | null,
+        checksTopupBonus: 0,
+        checksRemainingInPeriod: null as number | null,
         companyUsersCount,
       };
     }
@@ -805,14 +874,16 @@ export class MembershipsService {
       ),
     );
 
-    const checksPendingMonthly = Math.max(
-      0,
-      (m.maxChecksPerMonthSnapshot ?? 0) -
-        (m.checksUsedInCurrentMonth ?? 0),
-    );
-
-    const maxPeriod = m.maxChecksForPeriodSnapshot ?? 0;
+    const bonus = this.checksTopupBonusOf(m);
+    const maxMonthBase = m.maxChecksPerMonthSnapshot ?? 0;
+    const maxMonthEffective = this.effectiveMaxChecksPerMonth(m);
+    const maxPeriodBase = m.maxChecksForPeriodSnapshot ?? 0;
+    const maxPeriodEffective = this.effectiveMaxChecksForPeriod(m);
+    const usedMonth = m.checksUsedInCurrentMonth ?? 0;
     const usedPeriod = m.checksUsedInPeriod ?? 0;
+
+    const checksPendingMonthly = Math.max(0, maxMonthEffective - usedMonth);
+    const checksRemainingInPeriod = Math.max(0, maxPeriodEffective - usedPeriod);
     const checksQuotaExhausted = this.membershipQuotaExhausted(m);
 
     return {
@@ -823,9 +894,13 @@ export class MembershipsService {
       daysUntilExpiry,
       checksUsedInPeriod: usedPeriod,
       checksPendingMonthly,
-      checksUsedInCurrentMonth: m.checksUsedInCurrentMonth ?? 0,
-      maxChecksPerMonthSnapshot: m.maxChecksPerMonthSnapshot ?? null,
-      maxChecksForPeriodSnapshot: maxPeriod,
+      checksRemainingInPeriod,
+      checksUsedInCurrentMonth: usedMonth,
+      maxChecksPerMonthSnapshot: maxMonthBase,
+      maxChecksForPeriodSnapshot: maxPeriodBase,
+      maxChecksPerMonthEffective: maxMonthEffective,
+      maxChecksForPeriodEffective: maxPeriodEffective,
+      checksTopupBonus: bonus,
       checksQuotaExhausted,
       companyUsersCount,
     };

@@ -50,6 +50,10 @@ export class BoldCheckoutIntent extends Document {
 
   @Prop()
   landingOnboardingCompletedAt?: Date;
+
+  /** Marca acreditación en membresía (`checksTopupBonus`) para idempotencia. */
+  @Prop()
+  checksTopupAppliedAt?: Date;
 }
 
 export const BoldCheckoutIntentSchema =
