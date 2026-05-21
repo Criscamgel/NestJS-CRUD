@@ -1,6 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { BoldPaymentService } from './bold-payment.service';
 import { BoldStartCheckoutDto } from './dto/bold-checkout.dto';
+import { BoldStartChecksTopupDto } from './dto/bold-checks-topup.dto';
 import { Auth, GetUser } from 'src/auth/decorators';
 import { ValidRoles } from 'src/auth/interfaces';
 import { User } from 'src/users/entities/user.entity';
@@ -13,5 +14,14 @@ export class BoldCompanyPlansController {
   @Auth(ValidRoles.admin)
   checkoutBold(@Body() dto: BoldStartCheckoutDto, @GetUser() user: User) {
     return this.boldPaymentService.startCompanyAdminCheckout(dto.planId, user);
+  }
+
+  @Post('checkout/bold/checks-topup')
+  @Auth(ValidRoles.admin)
+  checkoutChecksTopup(
+    @Body() dto: BoldStartChecksTopupDto,
+    @GetUser() user: User,
+  ) {
+    return this.boldPaymentService.startChecksTopupCheckout(dto.quantity, user);
   }
 }

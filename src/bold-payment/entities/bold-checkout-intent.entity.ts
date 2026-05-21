@@ -1,7 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-export type BoldCheckoutSource = 'landing' | 'company_admin';
+export type BoldCheckoutSource =
+  | 'landing'
+  | 'company_admin'
+  | 'checks_topup';
 
 export type BoldCheckoutIntentStatus = 'pending' | 'completed' | 'failed';
 
@@ -11,8 +14,13 @@ export class BoldCheckoutIntent extends Document {
   @Prop({ required: true, unique: true, index: true })
   ref!: string;
 
+  /** Plan contratado; en `checks_topup` es el plan de la membresía vigente. */
   @Prop({ required: true, index: true })
   planId!: string;
+
+  /** Solo `checks_topup`: cantidad de checks comprados. */
+  @Prop({ min: 1 })
+  checksQuantity?: number;
 
   @Prop({ required: true })
   amountTotal!: number;
