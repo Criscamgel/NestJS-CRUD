@@ -31,6 +31,7 @@ import {
   normalizeAuthEmail,
 } from './auth.utils';
 import { MembershipsService } from 'src/memberships/memberships.service';
+import { TurnstileService } from 'src/turnstile/turnstile.service';
 
 @Injectable()
 export class AuthService {
@@ -43,6 +44,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     @Inject(forwardRef(() => MembershipsService))
     private readonly membershipsService: MembershipsService,
+    private readonly turnstileService: TurnstileService,
   ) {}
 
   private getJwtToken(payload: JwtPayload) {
@@ -52,7 +54,12 @@ export class AuthService {
 
   async login(
     loginUserDto: LoginUserDto,
+    clientIp?: string,
   ): Promise<ApiResponse<LoginUserResponseData>> {
+    await this.turnstileService.assertValid(
+      loginUserDto.turnstileToken,
+      clientIp,
+    );
     const { password, email } = loginUserDto;
     const emailNorm = normalizeAuthEmail(email);
 
@@ -142,7 +149,14 @@ export class AuthService {
     return { message: 'Sesión cerrada exitosamente' };
   }
 
-  async recoverPassword(recoverPasswordDto: RecoverPasswordDto) {
+  async recoverPassword(
+    recoverPasswordDto: RecoverPasswordDto,
+    clientIp?: string,
+  ) {
+    await this.turnstileService.assertValid(
+      recoverPasswordDto.turnstileToken,
+      clientIp,
+    );
     const { email } = recoverPasswordDto;
     const emailNorm = normalizeAuthEmail(email);
 

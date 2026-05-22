@@ -29,4 +29,6 @@ export const EnvConfiguration = () => ({
         '',
     boldApiKey: process.env.BOLD_API_KEY,
     boldSecretKey: process.env.BOLD_SECRET_KEY,
+    turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY?.trim() ?? '',
+    turnstileEnabled: process.env.TURNSTILE_ENABLED?.trim() ?? '',
 });

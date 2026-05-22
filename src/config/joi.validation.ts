@@ -29,6 +29,8 @@ export const JoiValidationSchema = Joi.object({
     /** Alias opcional de la misma URL de landing. */
     LANDING_URL: Joi.string().uri().optional().allow(''),
     DEBUG_BOLD_WEBHOOK: Joi.string().valid('true', 'false').optional(),
+    TURNSTILE_SECRET_KEY: Joi.string().optional().allow(''),
+    TURNSTILE_ENABLED: Joi.string().valid('true', 'false', '1', '0').optional(),
     // Seed - SuperAdmins (opcionales para no bloquear el arranque)
     SEED_ADMIN1_EMAIL: Joi.string().email().optional(),
     SEED_ADMIN1_DOCUMENT: Joi.string().optional(),

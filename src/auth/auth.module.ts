@@ -11,6 +11,7 @@ import { EmailModule } from 'src/email/email.module';
 import { UsersModule } from '../users/users.module';
 import { BlacklistedToken, BlacklistedTokenSchema } from './entities/blacklisted-token.entity';
 import { MembershipsModule } from 'src/memberships/memberships.module';
+import { TurnstileModule } from 'src/turnstile/turnstile.module';
 
 @Module({
   controllers: [AuthController],
@@ -19,6 +20,7 @@ import { MembershipsModule } from 'src/memberships/memberships.module';
         EmailModule,
         ConfigModule,
         CommonModule,
+        TurnstileModule,
         forwardRef(() => UsersModule),
         forwardRef(() => MembershipsModule),
         MongooseModule.forFeature([
