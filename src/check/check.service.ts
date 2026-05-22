@@ -87,7 +87,16 @@ export class CheckService {
     };
   }
 
-  private maskCheckRecord<T extends Record<string, unknown>>(check: T) {
+  private maskCheckRecord<T extends Record<string, unknown>>(
+    check: T,
+    actor: User,
+  ) {
+    if (this.isSuperAdminActor(actor) || this.isCompanyAdminActor(actor)) {
+      return {
+        ...check,
+        sensitiveFieldsMasked: false,
+      } as T & { sensitiveFieldsMasked: boolean };
+    }
     return applyCheckSensitiveMask({
       ...check,
       email: typeof check.email === 'string' ? check.email : undefined,
@@ -394,7 +403,7 @@ export class CheckService {
         : rawData;
 
     const data = (listed as Array<Record<string, unknown>>).map((item) =>
-      this.maskCheckRecord(item),
+      this.maskCheckRecord(item, actor),
     );
 
     return {
@@ -408,7 +417,10 @@ export class CheckService {
     this.assertCanAccessCheck(doc as Check | null, actor);
     return {
       message: 'Check obtenido',
-      data: this.maskCheckRecord(doc as unknown as Record<string, unknown>),
+      data: this.maskCheckRecord(
+        doc as unknown as Record<string, unknown>,
+        actor,
+      ),
     };
   }
 
