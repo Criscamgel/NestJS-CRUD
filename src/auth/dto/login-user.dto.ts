@@ -1,4 +1,4 @@
-import { IsEmail, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import {
   PASSWORD_COMPLEXITY_MESSAGE,
   PASSWORD_MAX_LENGTH,
@@ -18,4 +18,8 @@ export class LoginUserDto {
   @MaxLength(PASSWORD_MAX_LENGTH, { message: PASSWORD_MAX_LENGTH_MESSAGE })
   @Matches(PASSWORD_STRENGTH_REGEX, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password!: string;
+
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
 }

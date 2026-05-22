@@ -6,6 +6,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { resolveClientIp } from 'src/common/utils/client-ip.util';
 import { AuthService } from './auth.service';
 import { LoginUserDto, RecoverPasswordDto, ResetPasswordDto, ChangePasswordDto } from './dto';
 import { Auth, GetUser } from './decorators';
@@ -21,8 +23,8 @@ export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   @Post('login')
-  loginUser(@Body() loginUserDto: LoginUserDto) {
-    return this.authService.login(loginUserDto);
+  loginUser(@Body() loginUserDto: LoginUserDto, @Req() req: Request) {
+    return this.authService.login(loginUserDto, resolveClientIp(req));
   }
 
   @Post('logout')
@@ -35,8 +37,14 @@ export class AuthController {
   }
 
   @Post('recover-password')
-  recoverPassword(@Body() recoverPasswordDto: RecoverPasswordDto) {
-    return this.authService.recoverPassword(recoverPasswordDto);
+  recoverPassword(
+    @Body() recoverPasswordDto: RecoverPasswordDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.recoverPassword(
+      recoverPasswordDto,
+      resolveClientIp(req),
+    );
   }
 
   @Post('reset-password')

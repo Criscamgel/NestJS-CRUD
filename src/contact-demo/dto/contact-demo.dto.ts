@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /** Valores del select “checks al mes” (landing + validación alineadas) */
 export const CONTACT_DEMO_VOLUME_VALUES = [
@@ -28,4 +28,8 @@ export class ContactDemoDto {
     message: 'Selecciona un volumen de checks válido',
   })
   volume: string;
+
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
 }
