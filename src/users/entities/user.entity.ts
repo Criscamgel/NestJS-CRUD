@@ -64,6 +64,13 @@ export class User extends Document {
     })
     isActive!: boolean;
 
+    /**
+     * Origen de la desactivación (`admin` | `membership_expired`).
+     * Ausente cuando la cuenta está activa.
+     */
+    @Prop()
+    deactivationReason?: string;
+
     /** Último inicio de sesión exitoso */
     @Prop()
     lastAccessAt?: Date;

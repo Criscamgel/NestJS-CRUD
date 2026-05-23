@@ -24,6 +24,10 @@ import {
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import { BoldCheckoutIntent } from 'src/bold-payment/entities/bold-checkout-intent.entity';
+import {
+  USER_DEACTIVATION_REASON_MEMBERSHIP,
+  userFilterReactivatableByMembership,
+} from 'src/users/user-account.constants';
 
 function monthKey(d = new Date()): string {
   const y = d.getFullYear();
@@ -277,16 +281,26 @@ export class MembershipsService {
     }
 
     await this.userModel.updateMany(this.companyMembersFilter(cid), {
-      $set: { isActive: false },
+      $set: {
+        isActive: false,
+        deactivationReason: USER_DEACTIVATION_REASON_MEMBERSHIP,
+      },
     });
   }
 
   private async reactivateCompanyUsersForCompany(companyId: string): Promise<void> {
     const cid = this.normalizeCompanyId(companyId);
     if (!cid) return;
-    await this.userModel.updateMany(this.companyMembersFilter(cid), {
-      $set: { isActive: true },
-    });
+    await this.userModel.updateMany(
+      {
+        ...this.companyMembersFilter(cid),
+        ...userFilterReactivatableByMembership(),
+      },
+      {
+        $set: { isActive: true },
+        $unset: { deactivationReason: '' },
+      },
+    );
   }
 
   /**

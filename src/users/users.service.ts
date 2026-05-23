@@ -28,6 +28,7 @@ import {
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import { MembershipsService } from 'src/memberships/memberships.service';
+import { USER_DEACTIVATION_REASON_ADMIN } from './user-account.constants';
 import { ValidRoles } from 'src/auth/interfaces';
 import { CompanyBranchService } from 'src/company-branch/company-branch.service';
 
@@ -402,11 +403,19 @@ export class UsersService {
       }
     }
 
-    user.isActive = !user.isActive;
+    const nextActive = !user.isActive;
+    user.isActive = nextActive;
+    if (nextActive) {
+      user.deactivationReason = undefined;
+    } else {
+      user.deactivationReason = USER_DEACTIVATION_REASON_ADMIN;
+    }
     await user.save();
 
     return {
-      message: `Usuario ${user.isActive ? 'activado' : 'desactivado'} exitosamente`,
+      message: `Usuario ${nextActive ? 'activado' : 'desactivado'} exitosamente`,
+      isActive: nextActive,
+      deactivationReason: user.deactivationReason,
     };
   }
 
