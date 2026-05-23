@@ -91,22 +91,30 @@ export class CheckService {
     check: T,
     actor: User,
   ) {
+    const preservedDocument =
+      typeof check.documentNumber === 'string'
+        ? check.documentNumber.trim()
+        : undefined;
+
     if (this.isSuperAdminActor(actor) || this.isCompanyAdminActor(actor)) {
       return {
         ...check,
         sensitiveFieldsMasked: false,
       } as T & { sensitiveFieldsMasked: boolean };
     }
-    return applyCheckSensitiveMask({
+
+    const masked = applyCheckSensitiveMask({
       ...check,
       email: typeof check.email === 'string' ? check.email : undefined,
-      documentNumber:
-        typeof check.documentNumber === 'string'
-          ? check.documentNumber
-          : undefined,
+      documentNumber: preservedDocument,
       mobile: typeof check.mobile === 'string' ? check.mobile : undefined,
       createdAt: check.createdAt as Date | string | undefined,
     });
+
+    return {
+      ...masked,
+      documentNumber: preservedDocument ?? masked.documentNumber,
+    };
   }
 
   private buildSearchFilter(

@@ -2,7 +2,6 @@
 export const CHECK_SENSITIVE_MASK_DELAY_MS = 2 * 60 * 1000;
 
 export const MASKED_CHECK_EMAIL = '••••••@••••.com';
-export const MASKED_CHECK_DOCUMENT = '••••••••';
 export const MASKED_CHECK_MOBILE = '+•• ••• ••• ••••';
 
 export function isCheckSensitiveDataMasked(
@@ -34,8 +33,9 @@ export function applyCheckSensitiveMask<T extends CheckSensitiveFields>(
   return {
     ...check,
     email: MASKED_CHECK_EMAIL,
-    documentNumber: MASKED_CHECK_DOCUMENT,
     mobile: MASKED_CHECK_MOBILE,
+    /** La cédula nunca se enmascara: se conserva tal cual está en base de datos. */
+    documentNumber: check.documentNumber,
     sensitiveFieldsMasked: true,
   };
 }
