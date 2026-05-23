@@ -24,13 +24,14 @@ import {
 import { BlacklistedToken } from './entities/blacklisted-token.entity';
 import { User } from '../users/entities/user.entity';
 import { PublicUser } from '../users/interfaces/public-user.interface';
-import { INACTIVE_ACCOUNT_MESSAGE } from './auth.constants';
+import { getInactiveAccountMessage } from './auth.constants';
 import {
   getFrontendBaseUrl,
   isUserMarkedInactive,
   normalizeAuthEmail,
 } from './auth.utils';
 import { MembershipsService } from 'src/memberships/memberships.service';
+import { isUserDeactivatedByAdmin } from 'src/users/user-account.constants';
 import { TurnstileService } from 'src/turnstile/turnstile.service';
 
 @Injectable()
@@ -65,24 +66,31 @@ export class AuthService {
 
     let user = await this.userModel
       .findOne({ email: emailNorm })
-      .select('email password id isActive company')
+      .select('email password id isActive company deactivationReason')
       .lean();
 
     if (!user) throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
 
     // Antes de la contraseña: si la cuenta está desactivada, mensaje claro (evita confundir con credenciales incorrectas)
     if (isUserMarkedInactive(user.isActive)) {
+      if (isUserDeactivatedByAdmin(user.deactivationReason)) {
+        throw new ForbiddenException(
+          getInactiveAccountMessage(user.deactivationReason),
+        );
+      }
       if (user.company) {
         await this.membershipsService.ensureCompanyUsersActiveWhenMembershipValid(
           String(user.company),
         );
         user = await this.userModel
           .findOne({ email: emailNorm })
-          .select('email password id isActive company')
+          .select('email password id isActive company deactivationReason')
           .lean();
       }
       if (!user || isUserMarkedInactive(user.isActive)) {
-        throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+        throw new ForbiddenException(
+          getInactiveAccountMessage(user?.deactivationReason),
+        );
       }
     }
 
@@ -167,7 +175,9 @@ export class AuthService {
     }
 
     if (isUserMarkedInactive(user.isActive)) {
-      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+      throw new ForbiddenException(
+        getInactiveAccountMessage(user.deactivationReason),
+      );
     }
 
     const recoveryToken = this.getJwtToken({ id: user.id });
@@ -218,7 +228,9 @@ export class AuthService {
     }
 
     if (isUserMarkedInactive(user.isActive)) {
-      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+      throw new ForbiddenException(
+        getInactiveAccountMessage(user.deactivationReason),
+      );
     }
 
     // Encriptar la nueva clave
@@ -243,7 +255,7 @@ export class AuthService {
 
     const user = await this.userModel
       .findOne({ id: actor.id })
-      .select('id email password name lastName isActive')
+      .select('id email password name lastName isActive deactivationReason')
       .exec();
 
     if (!user) {
@@ -253,7 +265,9 @@ export class AuthService {
     }
 
     if (isUserMarkedInactive(user.isActive)) {
-      throw new ForbiddenException(INACTIVE_ACCOUNT_MESSAGE);
+      throw new ForbiddenException(
+        getInactiveAccountMessage(user.deactivationReason),
+      );
     }
 
     if (!bcrypt.compareSync(dto.currentPassword, user.password)) {
