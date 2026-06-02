@@ -4,7 +4,8 @@ import { Document } from 'mongoose';
 export type BoldCheckoutSource =
   | 'landing'
   | 'company_admin'
-  | 'checks_topup';
+  | 'checks_topup'
+  | 'renewal';
 
 export type BoldCheckoutIntentStatus = 'pending' | 'completed' | 'failed';
 
@@ -21,6 +22,10 @@ export class BoldCheckoutIntent extends Document {
   /** Solo `checks_topup`: cantidad de checks comprados. */
   @Prop({ min: 1 })
   checksQuantity?: number;
+
+  /** Solo `renewal`: meses a agregar al periodo vigente. */
+  @Prop({ min: 1 })
+  renewalMonths?: number;
 
   @Prop({ required: true })
   amountTotal!: number;

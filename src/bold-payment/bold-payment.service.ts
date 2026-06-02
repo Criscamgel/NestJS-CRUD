@@ -433,6 +433,89 @@ export class BoldPaymentService {
     };
   }
 
+  async startRenewalCheckout(months: number, actor: User) {
+    const qty = Math.floor(Number(months));
+    if (!Number.isFinite(qty) || qty < 1 || qty > 24) {
+      throw new BadRequestException(
+        'La cantidad de meses debe estar entre 1 y 24.',
+      );
+    }
+
+    const roles = actor.roles || [];
+    const legacy = (actor as { role?: string }).role;
+    if (roles.includes('superAdmin') || legacy === 'superAdmin') {
+      throw new BadRequestException(
+        'Los super administradores no pueden renovar desde el panel de empresa.',
+      );
+    }
+    const companyId = actor.company?.trim();
+    if (!companyId) {
+      throw new BadRequestException('Tu cuenta no está vinculada a una empresa.');
+    }
+
+    const membership =
+      await this.membershipsService.getActiveMembershipForCompany(companyId);
+    if (!membership) {
+      throw new BadRequestException(
+        'Necesitas un plan activo para renovar.',
+      );
+    }
+
+    const plan = await this.plansService.findOneById(membership.planId);
+    if (!plan) {
+      throw new BadRequestException('El plan asociado a la membresía ya no existe.');
+    }
+
+    const amount = Math.round(Number(plan.monthlyPrice) * qty);
+    if (!Number.isFinite(amount) || amount < 1) {
+      throw new BadRequestException('Monto de renovación inválido.');
+    }
+    const currency = normalizePlanCurrency(plan.currency);
+    const ref = `CHEKY-REN-${crypto.randomUUID()}`;
+    const callbackBase = this.callbackBaseForSource('company_admin');
+    const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
+    const amountLabel = formatMoneyAmount(amount, currency);
+    const boldDescription =
+      `Cheky renovación — ${plan.name} × ${qty} ${qty === 1 ? 'mes' : 'meses'} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
+
+    const bold = await this.callBoldCreateLink({
+      amount,
+      currency,
+      description: boldDescription,
+      callbackUrl,
+      reference: ref,
+    });
+
+    await this.intentModel.create({
+      ref,
+      planId: String(plan.id),
+      amountTotal: amount,
+      currency,
+      source: 'renewal',
+      companyId,
+      initiatedByUserId: actor.id,
+      renewalMonths: qty,
+      boldPaymentLinkId: bold.payment_link,
+      status: 'pending',
+    });
+
+    this.logger.log(
+      `Bold renewal checkout: companyId=${companyId} months=${qty} amount=${amount} currency=${currency} ref=${ref}`,
+    );
+
+    return {
+      message: 'Redirigiendo a Bold',
+      data: {
+        redirectUrl: bold.url,
+        paymentLink: bold.payment_link,
+        reference: ref,
+        months: qty,
+        amount,
+        currency,
+      },
+    };
+  }
+
   async startChecksTopupCheckout(quantity: number, actor: User) {
     const qty = Math.floor(Number(quantity));
     if (
@@ -610,6 +693,26 @@ export class BoldPaymentService {
       return {
         message: 'Membresía activada correctamente.',
         data: { fulfilled: true, source: 'company_admin' },
+      };
+    }
+
+    if (intent.source === 'renewal') {
+      const userId = intent.initiatedByUserId;
+      const companyId = intent.companyId;
+      const months = intent.renewalMonths ?? 0;
+      if (!userId || !companyId || months < 1) {
+        throw new BadRequestException('Datos de renovación incompletos.');
+      }
+      const user = await this.userModel.findOne({ id: userId }).exec();
+      if (!user) {
+        throw new BadRequestException('Usuario que inició el pago no encontrado.');
+      }
+      await this.membershipsService.renewMembership(companyId, months, user);
+      intent.status = 'completed';
+      await intent.save();
+      return {
+        message: `Plan renovado por ${months} ${months === 1 ? 'mes' : 'meses'} adicionales.`,
+        data: { fulfilled: true, source: 'renewal' },
       };
     }
 
