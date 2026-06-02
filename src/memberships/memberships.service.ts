@@ -913,6 +913,34 @@ export class MembershipsService {
   }
 
   /**
+   * Información del plan actual para el modal de renovación.
+   */
+  async getRenewalInfoForCompany(companyId: string) {
+    const m = await this.getActiveMembershipForCompany(companyId);
+    if (!m) {
+      return {
+        hasActiveMembership: false,
+        planName: null as string | null,
+        monthlyPrice: null as number | null,
+        currency: null as string | null,
+        maxChecksPerMonth: null as number | null,
+        membershipExpiresAt: null as string | null,
+      };
+    }
+
+    const planDoc = await this.plansService.findOneById(m.planId);
+    return {
+      hasActiveMembership: true,
+      planName: planDoc?.name?.trim() || `Plan ${m.planId}`,
+      monthlyPrice: planDoc?.monthlyPrice ?? 0,
+      currency: planDoc?.currency ?? 'USD',
+      maxChecksPerMonth: planDoc?.maxChecksPerMonth ?? m.maxChecksPerMonthSnapshot ?? 0,
+      membershipExpiresAt:
+        m.expiresAt instanceof Date ? m.expiresAt.toISOString() : String(m.expiresAt),
+    };
+  }
+
+  /**
    * Resumen para dashboard del administrador de empresa (membresía activa y uso de checks).
    */
   async getDashboardSummaryForCompany(companyId: string) {
