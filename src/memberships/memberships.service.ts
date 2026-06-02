@@ -369,6 +369,16 @@ export class MembershipsService {
     const expiresAt = addMonths(startedAt, plan.durationMonths);
     const mk = monthKey(startedAt);
 
+    // Preservar checks comprados (topup) de la membresía anterior para sumarlos a la nueva
+    const previousActive = await this.membershipModel
+      .findOne({
+        ...this.companyIdFilter(companyIdNorm),
+        status: MembershipStatus.ACTIVE,
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+    const carryOverTopupBonus = this.checksTopupBonusOf(previousActive ?? {});
+
     await this.membershipModel.updateMany(
       {
         ...this.companyIdFilter(companyIdNorm),
@@ -405,6 +415,7 @@ export class MembershipsService {
       checksUsedInCurrentMonth: 0,
       currentMonthKey: mk,
       checksUsedInPeriod: 0,
+      checksTopupBonus: carryOverTopupBonus,
     });
 
     await this.reactivateNormalUsersForCompany(companyIdNorm);
@@ -484,6 +495,61 @@ export class MembershipsService {
     });
     await this.reactivateNormalUsersForCompany(companyIdNorm);
     return { message: 'Membresía creada exitosamente', membership };
+  }
+
+  /**
+   * Renueva la membresía activa: extiende la fecha de expiración partiendo de la fecha
+   * de expiración actual (no desde hoy), suma los checks del nuevo periodo y preserva el topup bonus.
+   */
+  async renewMembership(companyId: string, months: number, actor: User) {
+    const companyIdNorm = this.normalizeCompanyId(companyId);
+    if (!companyIdNorm) {
+      throw new BadRequestException('companyId inválido');
+    }
+
+    const qty = Math.floor(Number(months));
+    if (!Number.isFinite(qty) || qty < 1 || qty > 24) {
+      throw new BadRequestException('La cantidad de meses debe estar entre 1 y 24.');
+    }
+
+    const m = await this.getActiveMembershipForCompany(companyIdNorm);
+    if (!m) {
+      throw new BadRequestException('No hay una membresía activa para renovar.');
+    }
+
+    const plan = await this.plansService.findOneById(m.planId);
+    if (!plan) {
+      throw new BadRequestException('El plan asociado a la membresía ya no existe.');
+    }
+
+    // Calcular nueva expiración a partir de la fecha de expiración actual (no hoy)
+    const currentExpiresAt = new Date(m.expiresAt);
+    const newExpiresAt = addMonths(currentExpiresAt, qty);
+
+    // Sumar checks del nuevo periodo al periodo total
+    const additionalChecks = plan.maxChecksPerMonth * qty;
+    const newMaxChecksForPeriod = (m.maxChecksForPeriodSnapshot ?? 0) + additionalChecks;
+    const newDurationMonths = (m.durationMonthsSnapshot ?? 0) + qty;
+
+    await this.membershipModel.updateOne(
+      { _id: m._id },
+      {
+        $set: {
+          expiresAt: newExpiresAt,
+          durationMonthsSnapshot: newDurationMonths,
+          maxChecksForPeriodSnapshot: newMaxChecksForPeriod,
+        },
+      },
+    );
+
+    return {
+      message: `Plan renovado exitosamente por ${qty} ${qty === 1 ? 'mes' : 'meses'} adicionales.`,
+      data: {
+        newExpiresAt: newExpiresAt.toISOString(),
+        additionalChecks,
+        totalDurationMonths: newDurationMonths,
+      },
+    };
   }
 
   async findAll(paginationQuery: PaginationQueryDto) {
@@ -847,6 +913,34 @@ export class MembershipsService {
   }
 
   /**
+   * Información del plan actual para el modal de renovación.
+   */
+  async getRenewalInfoForCompany(companyId: string) {
+    const m = await this.getActiveMembershipForCompany(companyId);
+    if (!m) {
+      return {
+        hasActiveMembership: false,
+        planName: null as string | null,
+        monthlyPrice: null as number | null,
+        currency: null as string | null,
+        maxChecksPerMonth: null as number | null,
+        membershipExpiresAt: null as string | null,
+      };
+    }
+
+    const planDoc = await this.plansService.findOneById(m.planId);
+    return {
+      hasActiveMembership: true,
+      planName: planDoc?.name?.trim() || `Plan ${m.planId}`,
+      monthlyPrice: planDoc?.monthlyPrice ?? 0,
+      currency: planDoc?.currency ?? 'USD',
+      maxChecksPerMonth: planDoc?.maxChecksPerMonth ?? m.maxChecksPerMonthSnapshot ?? 0,
+      membershipExpiresAt:
+        m.expiresAt instanceof Date ? m.expiresAt.toISOString() : String(m.expiresAt),
+    };
+  }
+
+  /**
    * Resumen para dashboard del administrador de empresa (membresía activa y uso de checks).
    */
   async getDashboardSummaryForCompany(companyId: string) {
@@ -917,6 +1011,11 @@ export class MembershipsService {
       checksTopupBonus: bonus,
       checksQuotaExhausted,
       companyUsersCount,
+      // Datos del plan para el modal de renovación
+      planMonthlyPrice: planDoc?.monthlyPrice ?? null,
+      planCurrency: planDoc?.currency ?? null,
+      planMaxChecksPerMonth: planDoc?.maxChecksPerMonth ?? null,
+      planDurationMonths: planDoc?.durationMonths ?? null,
     };
   }
 

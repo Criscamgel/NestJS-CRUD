@@ -41,6 +41,18 @@ export class MembershipsController {
     return this.membershipsService.getDashboardSummaryForCompany(companyId);
   }
 
+  @Get('renewal-info')
+  @Auth(ValidRoles.admin)
+  getRenewalInfo(@GetUser() actor: User) {
+    const companyId = actor.company?.trim();
+    if (!companyId) {
+      throw new BadRequestException(
+        'Tu usuario no está vinculado a una empresa.',
+      );
+    }
+    return this.membershipsService.getRenewalInfoForCompany(companyId);
+  }
+
   @Get()
   @Auth(ValidRoles.superAdmin)
   findAll(@Query() paginationQuery: PaginationQueryDto) {
