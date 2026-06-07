@@ -320,12 +320,38 @@ export class UsersService {
       }
     }
 
+    // Enriquecer con nombre de empresa
+    const companyIds = [
+      ...new Set(
+        objs
+          .map((o) => o['company'] as string | undefined)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    let companyNames = new Map<string, string>();
+    if (companyIds.length > 0) {
+      try {
+        const companies = await this.companyModel
+          .find({ id: { $in: companyIds } })
+          .select('id name')
+          .lean();
+        companyNames = new Map(
+          companies.map((c) => [c.id, c.name]),
+        );
+      } catch {
+        /* ignore enrich errors */
+      }
+    }
+
     const enriched = objs.map((o) => {
       const bid = o['branchId'] as string | undefined;
+      const cid = o['company'] as string | undefined;
       return {
         ...o,
         branchName:
           bid !== undefined ? branchNames.get(String(bid)) ?? '' : '',
+        companyName:
+          cid !== undefined ? companyNames.get(String(cid)) ?? '' : '',
       };
     });
 
