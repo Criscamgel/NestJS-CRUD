@@ -369,7 +369,7 @@ export class MembershipsService {
     const expiresAt = addMonths(startedAt, plan.durationMonths);
     const mk = monthKey(startedAt);
 
-    // Preservar checks comprados (topup) de la membresía anterior para sumarlos a la nueva
+    // Preservar checks comprados (topup) y checks no usados de la membresía anterior
     const previousActive = await this.membershipModel
       .findOne({
         ...this.companyIdFilter(companyIdNorm),
@@ -378,6 +378,19 @@ export class MembershipsService {
       .sort({ createdAt: -1 })
       .lean();
     const carryOverTopupBonus = this.checksTopupBonusOf(previousActive ?? {});
+
+    // Calcular checks restantes del periodo anterior para acumularlos
+    let carryOverRemainingChecks = 0;
+    if (previousActive) {
+      const prevMaxForPeriod =
+        (previousActive.maxChecksForPeriodSnapshot ?? 0) +
+        this.checksTopupBonusOf(previousActive);
+      const prevUsed = previousActive.checksUsedInPeriod ?? 0;
+      carryOverRemainingChecks = Math.max(0, prevMaxForPeriod - prevUsed);
+    }
+
+    // maxChecksForPeriod del nuevo plan + checks restantes del plan anterior (acumulable)
+    const finalMaxChecksForPeriod = maxChecksForPeriodSnapshot + carryOverRemainingChecks;
 
     await this.membershipModel.updateMany(
       {
@@ -411,7 +424,7 @@ export class MembershipsService {
       maxUsersSnapshot: plan.maxUsers,
       maxBranchesSnapshot: this.maxBranchesQuotaFromPlan(plan),
       maxChecksPerMonthSnapshot: plan.maxChecksPerMonth,
-      maxChecksForPeriodSnapshot,
+      maxChecksForPeriodSnapshot: finalMaxChecksForPeriod,
       checksUsedInCurrentMonth: 0,
       currentMonthKey: mk,
       checksUsedInPeriod: 0,

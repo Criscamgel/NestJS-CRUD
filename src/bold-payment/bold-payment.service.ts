@@ -234,7 +234,7 @@ export class BoldPaymentService {
         total_amount: totalAmount,
       },
       reference: params.reference,
-      description: params.description.slice(0, 500),
+      description: params.description.slice(0, 100),
       expiration_date: this.boldLinkExpirationNanosAsString(),
       callback_url: params.callbackUrl,
     };
@@ -340,9 +340,8 @@ export class BoldPaymentService {
     );
     const callbackBase = this.callbackBaseForSource('landing');
     const callbackUrl = `${callbackBase}/?pagoBold=1`;
-    const amountLabel = formatMoneyAmount(amount, currency);
     const boldDescription =
-      `${plan.name} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
+      `Cheky ${plan.name}`.slice(0, 100);
 
     const bold = await this.callBoldCreateLink({
       amount,
@@ -399,9 +398,8 @@ export class BoldPaymentService {
     const ref = `CHEKY-CO-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('company_admin');
     const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
-    const amountLabel = formatMoneyAmount(amount, currency);
     const boldDescription =
-      `Cheky empresa — ${plan.name} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
+      `Cheky empresa ${plan.name}`.slice(0, 100);
 
     const bold = await this.callBoldCreateLink({
       amount,
@@ -474,9 +472,8 @@ export class BoldPaymentService {
     const ref = `CHEKY-REN-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('company_admin');
     const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
-    const amountLabel = formatMoneyAmount(amount, currency);
     const boldDescription =
-      `Cheky renovación — ${plan.name} × ${qty} ${qty === 1 ? 'mes' : 'meses'} — Total ${amountLabel} — Ref. ${ref}`.slice(0, 500);
+      `Cheky renovacion ${plan.name} x${qty}`.slice(0, 100);
 
     const bold = await this.callBoldCreateLink({
       amount,
@@ -553,12 +550,8 @@ export class BoldPaymentService {
     const ref = `CHEKY-CHK-${crypto.randomUUID()}`;
     const callbackBase = this.callbackBaseForSource('checks_topup');
     const callbackUrl = `${callbackBase}/dashboard?pagoBold=1`;
-    const amountLabel = formatMoneyAmountPrecise(amountUsd, currency);
     const boldDescription =
-      `Cheky — ${qty} checks adicionales — Total ${amountLabel} — Ref. ${ref}`.slice(
-        0,
-        500,
-      );
+      `Cheky ${qty} checks adicionales`.slice(0, 100);
 
     const bold = await this.callBoldCreateLink({
       amount: amountUsd,
