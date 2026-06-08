@@ -216,7 +216,7 @@ export class CheckAcquisitionService {
         endDate: periodEnd,
         checksAssigned: checksPerMonth,
         checksUsed: 0,
-        status: isExpired ? 'expired' : isActive ? 'active' : 'upcoming',
+        status: (isExpired ? 'expired' : isActive ? 'active' : 'upcoming') as 'active' | 'upcoming' | 'expired',
       });
     }
 
