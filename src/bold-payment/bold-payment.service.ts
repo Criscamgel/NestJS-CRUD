@@ -13,6 +13,7 @@ import { BoldCheckoutIntent } from './entities/bold-checkout-intent.entity';
 import type { BoldCheckoutSource } from './entities/bold-checkout-intent.entity';
 import { PlansService } from 'src/plans/plans.service';
 import { MembershipsService } from 'src/memberships/memberships.service';
+import { CheckAcquisitionService } from 'src/memberships/check-acquisition.service';
 import { User } from 'src/users/entities/user.entity';
 import { EmailService } from 'src/email/email.service';
 import { getBoldMinTotalAmount } from 'src/common/catalog/plan-currencies.catalog';
@@ -48,6 +49,7 @@ export class BoldPaymentService {
     private readonly userModel: Model<User>,
     private readonly plansService: PlansService,
     private readonly membershipsService: MembershipsService,
+    private readonly checkAcquisitionService: CheckAcquisitionService,
     private readonly emailService: EmailService,
   ) {}
 
@@ -603,15 +605,23 @@ export class BoldPaymentService {
     if (intent.checksTopupAppliedAt) {
       return { checksAdded: qty };
     }
-    const { checksAdded } =
-      await this.membershipsService.addPurchasedChecksToActiveMembership(
-        companyId,
-        qty,
-      );
+    // Usar el nuevo wallet de checks adicionales
+    await this.checkAcquisitionService.creditExtraChecks({
+      companyId,
+      quantity: qty,
+      paymentRef: intent.ref,
+      amountPaid: intent.amountTotal,
+      currency: intent.currency,
+    });
+    // Compatibilidad: también sumar al campo legacy checksTopupBonus
+    await this.membershipsService.addPurchasedChecksToActiveMembership(
+      companyId,
+      qty,
+    ).catch(() => { /* no-op si no hay membresía activa */ });
     intent.checksTopupAppliedAt = new Date();
     intent.status = 'completed';
     await intent.save();
-    return { checksAdded };
+    return { checksAdded: qty };
   }
 
   async confirmByPaymentLink(paymentLinkId: string) {
@@ -668,44 +678,53 @@ export class BoldPaymentService {
     }
 
     if (intent.source === 'company_admin') {
-      const userId = intent.initiatedByUserId;
       const companyId = intent.companyId;
-      if (!userId || !companyId) {
+      if (!companyId) {
         throw new BadRequestException('Datos de checkout incompletos.');
       }
-      const user = await this.userModel.findOne({ id: userId }).exec();
-      if (!user) {
-        throw new BadRequestException('Usuario que inició el pago no encontrado.');
+      const plan = await this.plansService.findOneById(intent.planId);
+      if (!plan) {
+        throw new BadRequestException('Plan no encontrado.');
       }
-      await this.membershipsService.create(
-        { companyId, planId: intent.planId },
-        user,
-      );
+      const result = await this.checkAcquisitionService.scheduleRenewalOrPlanChange({
+        companyId,
+        planId: intent.planId,
+        durationMonths: plan.durationMonths,
+        type: 'plan_change',
+        paymentRef: intent.ref,
+        amountPaid: intent.amountTotal,
+        currency: intent.currency,
+        initiatedByUserId: intent.initiatedByUserId,
+      });
       intent.status = 'completed';
       await intent.save();
       return {
-        message: 'Membresía activada correctamente.',
-        data: { fulfilled: true, source: 'company_admin' },
+        message: result.message,
+        data: { fulfilled: true, source: 'company_admin', immediate: result.immediate },
       };
     }
 
     if (intent.source === 'renewal') {
-      const userId = intent.initiatedByUserId;
       const companyId = intent.companyId;
       const months = intent.renewalMonths ?? 0;
-      if (!userId || !companyId || months < 1) {
+      if (!companyId || months < 1) {
         throw new BadRequestException('Datos de renovación incompletos.');
       }
-      const user = await this.userModel.findOne({ id: userId }).exec();
-      if (!user) {
-        throw new BadRequestException('Usuario que inició el pago no encontrado.');
-      }
-      await this.membershipsService.renewMembership(companyId, months, user);
+      const result = await this.checkAcquisitionService.scheduleRenewalOrPlanChange({
+        companyId,
+        planId: intent.planId,
+        durationMonths: months,
+        type: 'renewal',
+        paymentRef: intent.ref,
+        amountPaid: intent.amountTotal,
+        currency: intent.currency,
+        initiatedByUserId: intent.initiatedByUserId,
+      });
       intent.status = 'completed';
       await intent.save();
       return {
-        message: `Plan renovado por ${months} ${months === 1 ? 'mes' : 'meses'} adicionales.`,
-        data: { fulfilled: true, source: 'renewal' },
+        message: result.message,
+        data: { fulfilled: true, source: 'renewal', immediate: result.immediate },
       };
     }
 
