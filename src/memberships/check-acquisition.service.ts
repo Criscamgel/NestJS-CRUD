@@ -200,7 +200,16 @@ export class CheckAcquisitionService {
     checksPerMonth: number,
   ): Promise<void> {
     const now = new Date();
-    const periods = [];
+    const periods: Array<{
+      companyId: string;
+      membershipId: string;
+      planId: string;
+      startDate: Date;
+      endDate: Date;
+      checksAssigned: number;
+      checksUsed: number;
+      status: 'active' | 'upcoming' | 'expired';
+    }> = [];
 
     for (let i = 0; i < durationMonths; i++) {
       const periodStart = addMonths(startDate, i);
