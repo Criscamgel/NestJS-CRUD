@@ -208,6 +208,10 @@ export class CheckAcquisitionService {
       const isActive = periodStart <= now && now < periodEnd;
       const isExpired = periodEnd <= now;
 
+      let periodStatus: 'active' | 'upcoming' | 'expired' = 'upcoming';
+      if (isExpired) periodStatus = 'expired';
+      else if (isActive) periodStatus = 'active';
+
       periods.push({
         companyId,
         membershipId,
@@ -216,7 +220,7 @@ export class CheckAcquisitionService {
         endDate: periodEnd,
         checksAssigned: checksPerMonth,
         checksUsed: 0,
-        status: (isExpired ? 'expired' : isActive ? 'active' : 'upcoming') as 'active' | 'upcoming' | 'expired',
+        status: periodStatus,
       });
     }
 
