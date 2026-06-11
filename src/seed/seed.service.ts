@@ -7,6 +7,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { User } from 'src/users/entities/user.entity';
+import { Company } from 'src/company/entities/company.entity';
+import { CompanyBranch } from 'src/company-branch/entities/company-branch.entity';
+import { Membership } from 'src/memberships/entities/membership.entity';
 import { CounterId } from 'src/common/entities/counter-id.entity';
 import { SeedUser } from './interfaces/seed-users.interface';
 
@@ -17,6 +20,12 @@ export class SeedService {
   constructor(
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
+    @InjectModel(Company.name)
+    private readonly companyModel: Model<Company>,
+    @InjectModel(CompanyBranch.name)
+    private readonly branchModel: Model<CompanyBranch>,
+    @InjectModel(Membership.name)
+    private readonly membershipModel: Model<Membership>,
     @InjectModel(CounterId.name)
     private readonly counterIdModel: Model<any>,
   ) {}
@@ -147,5 +156,133 @@ export class SeedService {
     }
 
     return admins;
+  }
+
+  /**
+   * Crea datos de prueba: empresa con membresía caducada + sede + usuarios.
+   * Idempotente: no duplica si ya existen.
+   *
+   * Endpoint: GET /api/seed/expired-membership
+   */
+  async seedExpiredMembership(): Promise<object> {
+    const results: string[] = [];
+    const companyId = '999';
+    const branchId = '999';
+    const membershipId = '999';
+    const adminUserId = '998';
+    const normalUserId = '999';
+    const password = 'Test1234*';
+    const hashedPassword = bcrypt.hashSync(password, 10);
+
+    // 1. Empresa
+    const existingCompany = await this.companyModel.findOne({ id: companyId });
+    if (!existingCompany) {
+      await this.companyModel.create({
+        id: companyId,
+        name: 'EmpresaTestVencida',
+        nit: '900111222-3',
+        city: 'Bogotá',
+        isActive: true,
+      });
+      results.push('Empresa creada: EmpresaTestVencida (id: 999)');
+    } else {
+      results.push('Empresa ya existía (id: 999)');
+    }
+
+    // 2. Sede
+    const existingBranch = await this.branchModel.findOne({ id: branchId });
+    if (!existingBranch) {
+      await this.branchModel.create({
+        id: branchId,
+        companyId,
+        name: 'Principal',
+        address: 'Cra 10 #20-30',
+        city: 'Bogotá',
+        isActive: true,
+      });
+      results.push('Sede creada: Principal (id: 999)');
+    } else {
+      results.push('Sede ya existía (id: 999)');
+    }
+
+    // 3. Membresía caducada
+    const existingMembership = await this.membershipModel.findOne({ id: membershipId });
+    if (!existingMembership) {
+      await this.membershipModel.create({
+        id: membershipId,
+        companyId,
+        planId: '1',
+        status: 'expired',
+        startedAt: new Date('2026-04-01T00:00:00.000Z'),
+        expiresAt: new Date('2026-05-01T00:00:00.000Z'),
+        durationMonthsSnapshot: 1,
+        maxUsersSnapshot: 25,
+        maxBranchesSnapshot: 5,
+        maxChecksPerMonthSnapshot: 150,
+        maxChecksForPeriodSnapshot: 150,
+        checksUsedInCurrentMonth: 150,
+        currentMonthKey: '2026-04',
+        checksUsedInPeriod: 150,
+        checksTopupBonus: 0,
+      });
+      results.push('Membresía caducada creada (id: 999, expired 2026-05-01)');
+    } else {
+      results.push('Membresía ya existía (id: 999)');
+    }
+
+    // 4. Usuario Administrador
+    const adminEmail = 'admin.vencido@yopmail.com';
+    const existingAdmin = await this.userModel.findOne({ email: adminEmail });
+    if (!existingAdmin) {
+      await this.userModel.create({
+        id: adminUserId,
+        email: adminEmail,
+        document: '1234567890',
+        password: hashedPassword,
+        name: 'Admin',
+        lastName: 'Vencido',
+        roles: ['admin'],
+        company: companyId,
+        branchId,
+        isActive: true,
+      });
+      results.push(`Admin creado: ${adminEmail}`);
+    } else {
+      results.push(`Admin ya existía: ${adminEmail}`);
+    }
+
+    // 5. Usuario rol User
+    const userEmail = 'user.vencido@yopmail.com';
+    const existingUser = await this.userModel.findOne({ email: userEmail });
+    if (!existingUser) {
+      await this.userModel.create({
+        id: normalUserId,
+        email: userEmail,
+        document: '0987654321',
+        password: hashedPassword,
+        name: 'Usuario',
+        lastName: 'Vencido',
+        roles: ['user'],
+        company: companyId,
+        branchId,
+        isActive: true,
+      });
+      results.push(`Usuario creado: ${userEmail}`);
+    } else {
+      results.push(`Usuario ya existía: ${userEmail}`);
+    }
+
+    this.logger.log(`Seed expired-membership ejecutado: ${results.length} operaciones`);
+
+    return {
+      message: 'Seed de membresía caducada ejecutado.',
+      data: {
+        results,
+        credentials: {
+          admin: { email: adminEmail, password },
+          user: { email: userEmail, password },
+        },
+      },
+    };
   }
 }
