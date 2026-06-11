@@ -232,7 +232,9 @@ export class SeedService {
 
     // 4. Usuario Administrador
     const adminEmail = 'admin.vencido@yopmail.com';
-    const existingAdmin = await this.userModel.findOne({ email: adminEmail });
+    const existingAdmin = await this.userModel.findOne({
+      $or: [{ email: adminEmail }, { document: '1234567890' }],
+    });
     if (!existingAdmin) {
       await this.userModel.create({
         id: adminUserId,
@@ -248,12 +250,14 @@ export class SeedService {
       });
       results.push(`Admin creado: ${adminEmail}`);
     } else {
-      results.push(`Admin ya existía: ${adminEmail}`);
+      results.push(`Admin ya existía: ${existingAdmin.email} (doc: ${existingAdmin.document})`);
     }
 
     // 5. Usuario rol User
     const userEmail = 'user.vencido@yopmail.com';
-    const existingUser = await this.userModel.findOne({ email: userEmail });
+    const existingUser = await this.userModel.findOne({
+      $or: [{ email: userEmail }, { document: '0987654321' }],
+    });
     if (!existingUser) {
       await this.userModel.create({
         id: normalUserId,
@@ -269,7 +273,7 @@ export class SeedService {
       });
       results.push(`Usuario creado: ${userEmail}`);
     } else {
-      results.push(`Usuario ya existía: ${userEmail}`);
+      results.push(`Usuario ya existía: ${existingUser.email} (doc: ${existingUser.document})`);
     }
 
     this.logger.log(`Seed expired-membership ejecutado: ${results.length} operaciones`);
