@@ -8,6 +8,7 @@ import { Model } from 'mongoose';
 import { BoldCheckoutIntent } from './entities/bold-checkout-intent.entity';
 import { Plan } from 'src/plans/entities/plan.entity';
 import { User } from 'src/users/entities/user.entity';
+import { Company } from 'src/company/entities/company.entity';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 import {
   buildPaginationMeta,
@@ -25,6 +26,7 @@ type PaymentHistoryRow = {
   source: string;
   status: string;
   hasInvoice: boolean;
+  companyName: string;
 };
 
 /**
@@ -39,6 +41,8 @@ export class PaymentHistoryService {
     private readonly planModel: Model<Plan>,
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
+    @InjectModel(Company.name)
+    private readonly companyModel: Model<Company>,
   ) {}
 
   /** Listado paginado de pagos completados. */
@@ -91,6 +95,14 @@ export class PaymentHistoryService {
       .lean();
     const planMap = new Map(plans.map((p) => [p.id, p]));
 
+    // Enriquecer con nombres de empresa
+    const companyIds = [...new Set(data.map((d) => d.companyId).filter(Boolean))] as string[];
+    const companies = await this.companyModel
+      .find({ id: { $in: companyIds } })
+      .select('id name')
+      .lean();
+    const companyMap = new Map(companies.map((c) => [c.id, c.name]));
+
     const rows: PaymentHistoryRow[] = data.map((intent) => {
       const plan = planMap.get(intent.planId);
       return {
@@ -103,6 +115,7 @@ export class PaymentHistoryService {
         source: intent.source,
         status: intent.status,
         hasInvoice: intent.status === 'completed',
+        companyName: intent.companyId ? (companyMap.get(intent.companyId) ?? '—') : '—',
       };
     });
 

@@ -18,6 +18,7 @@ import { PlansModule } from 'src/plans/plans.module';
 import { MembershipsModule } from 'src/memberships/memberships.module';
 import { User, UserSchema } from 'src/users/entities/user.entity';
 import { Plan, PlanSchema } from 'src/plans/entities/plan.entity';
+import { Company, CompanySchema } from 'src/company/entities/company.entity';
 import { EmailModule } from 'src/email/email.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { CompanyModule } from 'src/company/company.module';
@@ -34,6 +35,7 @@ import {
       { name: BoldCheckoutIntent.name, schema: BoldCheckoutIntentSchema },
       { name: User.name, schema: UserSchema },
       { name: Plan.name, schema: PlanSchema },
+      { name: Company.name, schema: CompanySchema },
       { name: BlacklistedToken.name, schema: BlacklistedTokenSchema },
     ]),
     forwardRef(() => PlansModule),

@@ -100,6 +100,23 @@ export class BoldPaymentService {
     return trimmed.endsWith(suffix) ? trimmed : `${trimmed}${suffix}`;
   }
 
+  private async assertMonthlyPlanChangeLimit(companyId: string): Promise<void> {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const recentIntent = await this.intentModel.findOne({
+      companyId,
+      source: { $in: ['renewal', 'company_admin'] },
+      status: 'completed',
+      createdAt: { $gte: startOfMonth },
+    }).lean();
+    if (recentIntent) {
+      throw new BadRequestException(
+        'Solo puedes realizar una renovación o cambio de plan por mes. Podrás hacerlo nuevamente el próximo mes.',
+      );
+    }
+  }
+
   private callbackBaseForSource(source: BoldCheckoutSource): string {
     if (source === 'landing') {
       const u =
@@ -452,6 +469,9 @@ export class BoldPaymentService {
     if (!companyId) {
       throw new BadRequestException('Tu cuenta no está vinculada a una empresa.');
     }
+
+    // Restricción: solo una renovación o cambio de plan por mes
+    await this.assertMonthlyPlanChangeLimit(companyId);
 
     const membership =
       await this.membershipsService.getActiveMembershipForCompany(companyId);
