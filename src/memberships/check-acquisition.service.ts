@@ -200,13 +200,26 @@ export class CheckAcquisitionService {
     checksPerMonth: number,
   ): Promise<void> {
     const now = new Date();
-    const periods = [];
+    const periods: Array<{
+      companyId: string;
+      membershipId: string;
+      planId: string;
+      startDate: Date;
+      endDate: Date;
+      checksAssigned: number;
+      checksUsed: number;
+      status: 'active' | 'upcoming' | 'expired';
+    }> = [];
 
     for (let i = 0; i < durationMonths; i++) {
       const periodStart = addMonths(startDate, i);
       const periodEnd = addMonths(startDate, i + 1);
       const isActive = periodStart <= now && now < periodEnd;
       const isExpired = periodEnd <= now;
+
+      let periodStatus: 'active' | 'upcoming' | 'expired' = 'upcoming';
+      if (isExpired) periodStatus = 'expired';
+      else if (isActive) periodStatus = 'active';
 
       periods.push({
         companyId,
@@ -216,7 +229,7 @@ export class CheckAcquisitionService {
         endDate: periodEnd,
         checksAssigned: checksPerMonth,
         checksUsed: 0,
-        status: isExpired ? 'expired' : isActive ? 'active' : 'upcoming',
+        status: periodStatus,
       });
     }
 
@@ -484,7 +497,14 @@ export class CheckAcquisitionService {
             checksUsed: activePeriod.checksUsed,
             checksRemaining: activePeriod.checksAssigned - activePeriod.checksUsed,
           }
-        : null,
+        : {
+            // Fallback para membresías legacy sin períodos generados
+            startDate: membership.startedAt,
+            endDate: membership.expiresAt,
+            checksAssigned: membership.maxChecksForPeriodSnapshot + (membership.checksTopupBonus ?? 0),
+            checksUsed: membership.checksUsedInPeriod,
+            checksRemaining: Math.max(0, (membership.maxChecksForPeriodSnapshot + (membership.checksTopupBonus ?? 0)) - membership.checksUsedInPeriod),
+          },
       scheduledChanges: await Promise.all(
         scheduledChanges.map(async (sc) => {
           const scPlan = await this.planModel.findOne({ id: sc.planId });

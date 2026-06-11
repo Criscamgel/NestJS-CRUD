@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { MembershipsService } from './memberships.service';
+import { CheckAcquisitionService } from './check-acquisition.service';
 import { CreateMembershipDto } from './dto';
 import { Auth, GetUser } from 'src/auth/decorators';
 import { ValidRoles } from 'src/auth/interfaces';
@@ -17,7 +18,10 @@ import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
 
 @Controller('memberships')
 export class MembershipsController {
-  constructor(private readonly membershipsService: MembershipsService) {}
+  constructor(
+    private readonly membershipsService: MembershipsService,
+    private readonly checkAcquisitionService: CheckAcquisitionService,
+  ) {}
 
   @Post()
   @Auth(ValidRoles.superAdmin, ValidRoles.admin)
@@ -51,6 +55,19 @@ export class MembershipsController {
       );
     }
     return this.membershipsService.getRenewalInfoForCompany(companyId);
+  }
+
+  /** Resumen del nuevo sistema de adquisición de checks para dashboard admin. */
+  @Get('check-acquisition-dashboard')
+  @Auth(ValidRoles.admin)
+  getCheckAcquisitionDashboard(@GetUser() actor: User) {
+    const companyId = actor.company?.trim();
+    if (!companyId) {
+      throw new BadRequestException(
+        'Tu usuario no está vinculado a una empresa.',
+      );
+    }
+    return this.checkAcquisitionService.getDashboardSummary(companyId);
   }
 
   @Get()
