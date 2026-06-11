@@ -159,6 +159,20 @@ export class SeedService {
   }
 
   /**
+   * Genera un número de documento único verificando contra la base de datos.
+   */
+  private async generateUniqueDocument(): Promise<string> {
+    let attempts = 0;
+    while (attempts < 20) {
+      const doc = `TEST${Date.now().toString().slice(-7)}${Math.floor(Math.random() * 100)}`;
+      const exists = await this.userModel.findOne({ document: doc }).lean();
+      if (!exists) return doc;
+      attempts++;
+    }
+    throw new BadRequestException('No se pudo generar un documento único después de 20 intentos.');
+  }
+
+  /**
    * Crea datos de prueba: empresa con membresía caducada + sede + usuarios.
    * Idempotente: no duplica si ya existen.
    *
@@ -232,11 +246,9 @@ export class SeedService {
 
     // 4. Usuario Administrador
     const adminEmail = 'admin.vencido@yopmail.com';
-    const adminDocument = '9991234567';
-    const existingAdmin = await this.userModel.findOne({
-      $or: [{ email: adminEmail }, { document: adminDocument }],
-    });
+    const existingAdmin = await this.userModel.findOne({ email: adminEmail });
     if (!existingAdmin) {
+      const adminDocument = await this.generateUniqueDocument();
       await this.userModel.create({
         id: adminUserId,
         email: adminEmail,
@@ -249,18 +261,16 @@ export class SeedService {
         branchId,
         isActive: true,
       });
-      results.push(`Admin creado: ${adminEmail}`);
+      results.push(`Admin creado: ${adminEmail} (doc: ${adminDocument})`);
     } else {
-      results.push(`Admin ya existía: ${existingAdmin.email} (doc: ${existingAdmin.document})`);
+      results.push(`Admin ya existía: ${existingAdmin.email}`);
     }
 
     // 5. Usuario rol User
     const userEmail = 'user.vencido@yopmail.com';
-    const userDocument = '9990987654';
-    const existingUser = await this.userModel.findOne({
-      $or: [{ email: userEmail }, { document: userDocument }],
-    });
+    const existingUser = await this.userModel.findOne({ email: userEmail });
     if (!existingUser) {
+      const userDocument = await this.generateUniqueDocument();
       await this.userModel.create({
         id: normalUserId,
         email: userEmail,
@@ -273,9 +283,9 @@ export class SeedService {
         branchId,
         isActive: true,
       });
-      results.push(`Usuario creado: ${userEmail}`);
+      results.push(`Usuario creado: ${userEmail} (doc: ${userDocument})`);
     } else {
-      results.push(`Usuario ya existía: ${existingUser.email} (doc: ${existingUser.document})`);
+      results.push(`Usuario ya existía: ${existingUser.email}`);
     }
 
     this.logger.log(`Seed expired-membership ejecutado: ${results.length} operaciones`);
