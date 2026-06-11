@@ -1024,6 +1024,7 @@ export class MembershipsService {
       checksTopupBonus: bonus,
       checksQuotaExhausted,
       companyUsersCount,
+      maxUsersSnapshot: m.maxUsersSnapshot ?? null,
       // Datos del plan para el modal de renovación
       planMonthlyPrice: planDoc?.monthlyPrice ?? null,
       planCurrency: planDoc?.currency ?? null,

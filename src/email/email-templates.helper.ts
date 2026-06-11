@@ -478,8 +478,8 @@ export function landingPlanThankYouEmailTemplate(
       ${row('Precio mensual', fmt(monthlyPrice))}
       ${row('Total pagado', fmt(totalCharge))}
       ${row('Vigencia', periodLabel)}
-      ${row('Usuarios (rol usuario)', `Hasta ${fmt(maxUsers)}`)}
-      ${row('Checks por mes', `Hasta ${fmt(maxChecksPerMonth)}`)}
+      ${row('Usuarios (rol usuario)', `Hasta ${maxUsers}`)}
+      ${row('Checks por mes', `Hasta ${maxChecksPerMonth}`)}
     </table>
     ${infoBox(
       `<strong>¿Necesitas ayuda?</strong><br/>Escríbenos a <a href="mailto:ventas@cheky.co" style="color:${BRAND.primary};">ventas@cheky.co</a>. Te responderemos lo antes posible.`,
