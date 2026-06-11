@@ -232,14 +232,15 @@ export class SeedService {
 
     // 4. Usuario Administrador
     const adminEmail = 'admin.vencido@yopmail.com';
+    const adminDocument = '9991234567';
     const existingAdmin = await this.userModel.findOne({
-      $or: [{ email: adminEmail }, { document: '1234567890' }],
+      $or: [{ email: adminEmail }, { document: adminDocument }],
     });
     if (!existingAdmin) {
       await this.userModel.create({
         id: adminUserId,
         email: adminEmail,
-        document: '1234567890',
+        document: adminDocument,
         password: hashedPassword,
         name: 'Admin',
         lastName: 'Vencido',
@@ -255,14 +256,15 @@ export class SeedService {
 
     // 5. Usuario rol User
     const userEmail = 'user.vencido@yopmail.com';
+    const userDocument = '9990987654';
     const existingUser = await this.userModel.findOne({
-      $or: [{ email: userEmail }, { document: '0987654321' }],
+      $or: [{ email: userEmail }, { document: userDocument }],
     });
     if (!existingUser) {
       await this.userModel.create({
         id: normalUserId,
         email: userEmail,
-        document: '0987654321',
+        document: userDocument,
         password: hashedPassword,
         name: 'Usuario',
         lastName: 'Vencido',
