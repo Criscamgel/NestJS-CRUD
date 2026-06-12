@@ -12,6 +12,11 @@ import { Appointment } from './entities/appointment.entity';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { isBusinessDay } from './colombia-holidays';
 import { EmailService } from 'src/email/email.service';
+import {
+  appointmentConfirmationEmailTemplate,
+  appointmentSalesNotificationEmailTemplate,
+  getEmailLogoAttachment,
+} from 'src/email/email-templates.helper';
 
 type SlotDay = { date: string; slots: string[] };
 
@@ -266,44 +271,42 @@ export class AppointmentsService {
       timeZone: this.timezone,
     });
 
-    const clientHtml = `
-      <h2>¡Tu cita con Cheky está confirmada! ✅</h2>
-      <p>Hola <strong>${appointment.name}</strong>,</p>
-      <p>Tu reunión con el equipo de Cheky ha sido agendada:</p>
-      <table style="margin: 16px 0; border-collapse: collapse;">
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Fecha:</td><td style="padding: 8px 16px;">${dateFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Hora:</td><td style="padding: 8px 16px;">${timeFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Duración:</td><td style="padding: 8px 16px;">${appointment.durationMinutes} minutos</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Link:</td><td style="padding: 8px 16px;"><a href="${appointment.meetingLink}">${appointment.meetingLink}</a></td></tr>
-      </table>
-      <p>Ingresa al link de la videollamada a la hora indicada. ¡Te esperamos!</p>
-      <p style="color: #666; font-size: 13px;">— Equipo Cheky</p>
-    `;
+    const logoAtt = getEmailLogoAttachment();
+    const attachments = logoAtt ? [logoAtt] : [];
 
-    const salesHtml = `
-      <h2>Nueva cita agendada desde la landing 📅</h2>
-      <table style="margin: 16px 0; border-collapse: collapse;">
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Nombre:</td><td style="padding: 8px 16px;">${appointment.name}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Email:</td><td style="padding: 8px 16px;">${appointment.email}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Empresa:</td><td style="padding: 8px 16px;">${company}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Teléfono:</td><td style="padding: 8px 16px;">${appointment.phone || '—'}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Fecha:</td><td style="padding: 8px 16px;">${dateFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Hora:</td><td style="padding: 8px 16px;">${timeFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Duración:</td><td style="padding: 8px 16px;">${appointment.durationMinutes} min</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Link:</td><td style="padding: 8px 16px;"><a href="${appointment.meetingLink}">${appointment.meetingLink}</a></td></tr>
-      </table>
-    `;
+    // Correo al cliente (template corporativo)
+    const clientHtml = appointmentConfirmationEmailTemplate({
+      name: appointment.name,
+      date: dateFormatted,
+      time: timeFormatted,
+      duration: appointment.durationMinutes,
+      meetingLink: appointment.meetingLink,
+    });
 
     await this.emailService.sendEmail({
       to: appointment.email,
-      subject: 'Tu cita con Cheky está confirmada ✅',
+      subject: 'Tu cita con Cheky está confirmada',
       htmlBody: clientHtml,
+      attachements: attachments,
     }).catch((e) => this.logger.error('Error enviando correo al cliente', e));
+
+    // Correo a ventas (template corporativo)
+    const salesHtml = appointmentSalesNotificationEmailTemplate({
+      name: appointment.name,
+      email: appointment.email,
+      company,
+      phone: appointment.phone || '—',
+      date: dateFormatted,
+      time: timeFormatted,
+      duration: appointment.durationMinutes,
+      meetingLink: appointment.meetingLink,
+    });
 
     await this.emailService.sendEmail({
       to: this.salesInbox,
       subject: `Nueva cita: ${appointment.name} — ${dateFormatted} ${timeFormatted}`,
       htmlBody: salesHtml,
+      attachements: attachments,
     }).catch((e) => this.logger.error('Error enviando correo a ventas', e));
   }
 }
