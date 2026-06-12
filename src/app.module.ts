@@ -21,6 +21,7 @@ import { SuperAdminDashboardModule } from './super-admin-dashboard/super-admin-d
 import { BoldPaymentModule } from './bold-payment/bold-payment.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CompanyBranchModule } from './company-branch/company-branch.module';
+import { AppointmentsModule } from './appointments/appointments.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { CompanyBranchModule } from './company-branch/company-branch.module';
     SuperAdminDashboardModule,
     BoldPaymentModule,
     CompanyBranchModule,
+    AppointmentsModule,
     CatalogModule,
   ],
   controllers: [AppController],
