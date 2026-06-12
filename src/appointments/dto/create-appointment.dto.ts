@@ -19,12 +19,10 @@ export class CreateAppointmentDto {
 
   /** Fecha en formato YYYY-MM-DD. */
   @IsString()
-  @MinLength(10)
   date!: string;
 
-  /** Hora de inicio en formato HH:mm (24h). */
+  /** Hora de inicio en formato HH:mm (ej: "09:00"). */
   @IsString()
-  @MinLength(5)
   startTime!: string;
 
   /** Duración en minutos (15, 30, 45, 60). */

@@ -10,25 +10,34 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
-  /** Configuración pública del sistema de citas. */
+  /** Configuración pública del scheduler (durations, horario, timezone). */
   @Get('config')
   getConfig() {
     return this.appointmentsService.getPublicConfig();
   }
 
-  /** Slots disponibles para un mes y duración dados. */
+  /** Slots disponibles para un mes completo. */
   @Get('available-slots')
   getAvailableSlots(
     @Query('month') month: string,
     @Query('duration') duration: string,
   ) {
-    const dur = parseInt(duration, 10) || 30;
-    return this.appointmentsService.getAvailableSlotsForMonth(month, dur);
+    return this.appointmentsService.getAvailableSlotsForMonth(
+      month,
+      parseInt(duration, 10) || 30,
+    );
   }
 
   /** Agendar una cita. */
   @Post('book')
   book(@Body() dto: CreateAppointmentDto) {
-    return this.appointmentsService.book(dto);
+    return this.appointmentsService.create(dto);
+  }
+
+  /** Verificar si un email puede agendar (límite mensual). */
+  @Get('can-schedule')
+  canSchedule(@Query('email') email: string) {
+    if (!email?.trim()) return { canSchedule: true };
+    return this.appointmentsService.canSchedule(email);
   }
 }
