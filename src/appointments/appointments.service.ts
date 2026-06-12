@@ -12,12 +12,13 @@ import { Appointment } from './entities/appointment.entity';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { isBusinessDay } from './colombia-holidays';
 import { EmailService } from 'src/email/email.service';
+import {
+  appointmentConfirmationEmailTemplate,
+  appointmentSalesNotificationEmailTemplate,
+  getEmailLogoAttachment,
+} from 'src/email/email-templates.helper';
 
-type TimeSlot = {
-  startAt: string;
-  endAt: string;
-  available: boolean;
-};
+type SlotDay = { date: string; slots: string[] };
 
 @Injectable()
 export class AppointmentsService {
@@ -36,14 +37,12 @@ export class AppointmentsService {
     return this.configService.get<string>('APPOINTMENT_DEFAULT_TIMEZONE') || 'America/Bogota';
   }
 
-  private get startHour(): number {
-    const h = this.configService.get<string>('APPOINTMENT_START_HOUR') || '08:00';
-    return parseInt(h.split(':')[0], 10);
+  private get startHour(): string {
+    return this.configService.get<string>('APPOINTMENT_START_HOUR') || '08:00';
   }
 
-  private get endHour(): number {
-    const h = this.configService.get<string>('APPOINTMENT_END_HOUR') || '18:00';
-    return parseInt(h.split(':')[0], 10);
+  private get endHour(): string {
+    return this.configService.get<string>('APPOINTMENT_END_HOUR') || '18:00';
   }
 
   private get slotDuration(): number {
@@ -62,87 +61,109 @@ export class AppointmentsService {
     return this.configService.get<string>('APPOINTMENT_INBOX') || 'ventas@cheky.co';
   }
 
-  // ─── SLOTS DISPONIBLES ──────────────────────────────────────────────────────
+  // ─── PUBLIC CONFIG ──────────────────────────────────────────────────────────
+
+  /** Retorna configuración pública para el scheduler del frontend. */
+  getPublicConfig() {
+    return {
+      availableDays: [1, 2, 3, 4, 5], // lun a vie
+      startHour: this.startHour,
+      endHour: this.endHour,
+      allowedDurations: [15, 30, 45, 60],
+      timezone: this.timezone,
+      maxAdvanceDays: this.maxAdvanceDays,
+    };
+  }
+
+  // ─── SLOTS POR MES ──────────────────────────────────────────────────────────
 
   /**
-   * Retorna los slots disponibles para un día dado.
+   * Retorna todos los slots disponibles del mes, agrupados por día.
    */
-  async getAvailableSlots(dateStr: string, durationMinutes?: number): Promise<TimeSlot[]> {
-    const duration = durationMinutes || 30;
-    const date = new Date(dateStr + 'T00:00:00');
+  async getAvailableSlotsForMonth(monthStr: string, durationMinutes: number) {
+    const [yearStr, monthNumStr] = (monthStr || '').split('-');
+    const year = parseInt(yearStr, 10);
+    const monthIdx = parseInt(monthNumStr, 10) - 1;
 
-    // Validar que sea día laborable
-    if (!isBusinessDay(date)) {
-      return [];
+    if (isNaN(year) || isNaN(monthIdx) || monthIdx < 0 || monthIdx > 11) {
+      return { month: monthStr, duration: durationMinutes, days: [] };
     }
 
-    // Validar que no sea en el pasado ni más allá del máximo
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const maxDate = new Date(today.getTime() + this.maxAdvanceDays * 24 * 60 * 60 * 1000);
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
 
-    if (date < today || date > maxDate) {
-      return [];
-    }
+    const startH = parseInt(this.startHour.split(':')[0], 10);
+    const endH = parseInt(this.endHour.split(':')[0], 10);
+    const startMinutes = startH * 60;
+    const endMinutes = endH * 60;
 
-    // Generar todos los slots del día
-    const slots: TimeSlot[] = [];
-    const startMinutes = this.startHour * 60;
-    const endMinutes = this.endHour * 60;
-
-    for (let m = startMinutes; m + duration <= endMinutes; m += this.slotDuration) {
-      const slotStart = new Date(date);
-      slotStart.setUTCHours(Math.floor(m / 60) + 5, m % 60, 0, 0); // +5 para UTC desde Colombia
-
-      const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
-
-      slots.push({
-        startAt: slotStart.toISOString(),
-        endAt: slotEnd.toISOString(),
-        available: true,
-      });
-    }
-
-    // Filtrar slots pasados (si es hoy)
-    const filteredSlots = slots.filter((s) => new Date(s.startAt) > now);
-
-    // Obtener citas existentes del día
-    const dayStart = new Date(date);
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const dayEnd = new Date(date);
-    dayEnd.setUTCHours(23, 59, 59, 999);
-
+    // Obtener todas las citas del mes
+    const monthStart = new Date(year, monthIdx, 1);
+    const monthEnd = new Date(year, monthIdx + 1, 0, 23, 59, 59);
     const existingAppointments = await this.appointmentModel.find({
-      startAt: { $gte: dayStart, $lte: dayEnd },
+      startAt: { $gte: monthStart, $lte: monthEnd },
       status: { $ne: 'cancelled' },
     }).lean();
 
-    // Marcar como no disponibles los que se solapan
-    return filteredSlots.map((slot) => {
-      const slotStart = new Date(slot.startAt).getTime();
-      const slotEnd = new Date(slot.endAt).getTime();
+    const days: SlotDay[] = [];
 
-      const isOccupied = existingAppointments.some((appt) => {
-        const apptStart = new Date(appt.startAt).getTime();
-        const apptEnd = new Date(appt.endAt).getTime();
-        return slotStart < apptEnd && slotEnd > apptStart;
-      });
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, monthIdx, d);
+      if (date < today || date > maxDate) continue;
+      if (!isBusinessDay(date)) continue;
 
-      return { ...slot, available: !isOccupied };
-    });
+      const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const slots: string[] = [];
+
+      for (let m = startMinutes; m + durationMinutes <= endMinutes; m += durationMinutes) {
+        const hour = Math.floor(m / 60);
+        const min = m % 60;
+        const slotLabel = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+
+        // Verificar si es pasado (si es hoy)
+        if (date.getTime() === today.getTime()) {
+          const slotTime = new Date(year, monthIdx, d, hour, min);
+          if (slotTime <= now) continue;
+        }
+
+        // Verificar overlap con citas existentes
+        const slotStartUTC = new Date(Date.UTC(year, monthIdx, d, hour + 5, min)); // +5 para UTC
+        const slotEndUTC = new Date(slotStartUTC.getTime() + durationMinutes * 60 * 1000);
+
+        const isOccupied = existingAppointments.some((appt) => {
+          const apptStart = new Date(appt.startAt).getTime();
+          const apptEnd = new Date(appt.endAt).getTime();
+          return slotStartUTC.getTime() < apptEnd && slotEndUTC.getTime() > apptStart;
+        });
+
+        if (!isOccupied) {
+          slots.push(slotLabel);
+        }
+      }
+
+      if (slots.length > 0) {
+        days.push({ date: dateStr, slots });
+      }
+    }
+
+    return { month: monthStr, duration: durationMinutes, days };
   }
 
   // ─── CREAR CITA ─────────────────────────────────────────────────────────────
 
-  /**
-   * Agenda una cita. Valida disponibilidad, límite mensual y envía correos.
-   */
-  async create(dto: CreateAppointmentDto): Promise<{ message: string; appointment: object }> {
-    const startAt = new Date(dto.startAt);
-    const endAt = new Date(startAt.getTime() + dto.durationMinutes * 60 * 1000);
+  async create(dto: CreateAppointmentDto) {
+    const [year, month, day] = dto.date.split('-').map(Number);
+    const [hour, min] = dto.startTime.split(':').map(Number);
+
+    // Construir fecha en UTC (Colombia es UTC-5)
+    const startAt = new Date(Date.UTC(year, month - 1, day, hour + 5, min));
+    const endAt = new Date(startAt.getTime() + dto.duration * 60 * 1000);
 
     // Validar día laborable
-    if (!isBusinessDay(startAt)) {
+    const localDate = new Date(year, month - 1, day);
+    if (!isBusinessDay(localDate)) {
       throw new BadRequestException('El día seleccionado no es laborable.');
     }
 
@@ -151,8 +172,8 @@ export class AppointmentsService {
       throw new BadRequestException('No puedes agendar en una fecha/hora pasada.');
     }
 
-    // Validar límite de una cita por mes por email
-    const monthKey = `${startAt.getFullYear()}-${String(startAt.getMonth() + 1).padStart(2, '0')}`;
+    // Validar límite mensual por email
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
     const existingThisMonth = await this.appointmentModel.findOne({
       email: dto.email.toLowerCase().trim(),
       monthKey,
@@ -164,7 +185,7 @@ export class AppointmentsService {
       );
     }
 
-    // Validar que el slot esté disponible (no solapamiento)
+    // Validar solapamiento
     const overlapping = await this.appointmentModel.findOne({
       startAt: { $lt: endAt },
       endAt: { $gt: startAt },
@@ -184,38 +205,42 @@ export class AppointmentsService {
       id,
       name: dto.name.trim(),
       email: dto.email.toLowerCase().trim(),
-      phone: dto.phone.trim(),
+      phone: dto.phone?.trim() || '',
       startAt,
       endAt,
-      durationMinutes: dto.durationMinutes,
+      durationMinutes: dto.duration,
       meetingLink,
       status: 'confirmed',
       monthKey,
     });
 
     // Enviar correos
-    await this.sendConfirmationEmails(appointment);
+    await this.sendConfirmationEmails(appointment, dto.company);
+
+    // Calcular endTime label
+    const endHour = (hour + Math.floor((min + dto.duration) / 60));
+    const endMin = (min + dto.duration) % 60;
+    const endTimeLabel = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
 
     return {
+      success: true,
       message: 'Cita agendada exitosamente. Revisa tu correo para los detalles.',
-      appointment: {
-        id: appointment.id,
-        startAt: appointment.startAt,
-        endAt: appointment.endAt,
-        meetingLink: appointment.meetingLink,
+      data: {
+        publicId: appointment.id,
+        date: dto.date,
+        startTime: dto.startTime,
+        endTime: endTimeLabel,
+        duration: dto.duration,
+        meetingLink,
       },
     };
   }
 
-  // ─── VERIFICAR SI PUEDE AGENDAR ────────────────────────────────────────────
+  // ─── VERIFICAR LÍMITE MENSUAL ───────────────────────────────────────────────
 
-  /**
-   * Verifica si un email ya tiene cita este mes.
-   */
-  async canSchedule(email: string): Promise<{ canSchedule: boolean; nextAvailableMonth?: string }> {
+  async canSchedule(email: string) {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
     const existing = await this.appointmentModel.findOne({
       email: email.toLowerCase().trim(),
       monthKey,
@@ -224,18 +249,14 @@ export class AppointmentsService {
 
     if (existing) {
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      return {
-        canSchedule: false,
-        nextAvailableMonth: nextMonth.toISOString().slice(0, 7),
-      };
+      return { canSchedule: false, nextAvailableMonth: nextMonth.toISOString().slice(0, 7) };
     }
-
     return { canSchedule: true };
   }
 
   // ─── CORREOS ────────────────────────────────────────────────────────────────
 
-  private async sendConfirmationEmails(appointment: Appointment): Promise<void> {
+  private async sendConfirmationEmails(appointment: Appointment, company: string): Promise<void> {
     const dateFormatted = appointment.startAt.toLocaleDateString('es-CO', {
       weekday: 'long',
       day: 'numeric',
@@ -250,45 +271,42 @@ export class AppointmentsService {
       timeZone: this.timezone,
     });
 
-    const clientHtml = `
-      <h2>¡Tu cita con Cheky está confirmada! ✅</h2>
-      <p>Hola <strong>${appointment.name}</strong>,</p>
-      <p>Tu reunión con el equipo de Cheky ha sido agendada:</p>
-      <table style="margin: 16px 0; border-collapse: collapse;">
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Fecha:</td><td style="padding: 8px 16px;">${dateFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Hora:</td><td style="padding: 8px 16px;">${timeFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Duración:</td><td style="padding: 8px 16px;">${appointment.durationMinutes} minutos</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Link:</td><td style="padding: 8px 16px;"><a href="${appointment.meetingLink}">${appointment.meetingLink}</a></td></tr>
-      </table>
-      <p>Ingresa al link de la videollamada a la hora indicada. ¡Te esperamos!</p>
-      <p style="color: #666; font-size: 13px;">— Equipo Cheky</p>
-    `;
+    const logoAtt = getEmailLogoAttachment();
+    const attachments = logoAtt ? [logoAtt] : [];
 
-    const salesHtml = `
-      <h2>Nueva cita agendada desde la landing 📅</h2>
-      <table style="margin: 16px 0; border-collapse: collapse;">
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Nombre:</td><td style="padding: 8px 16px;">${appointment.name}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Email:</td><td style="padding: 8px 16px;">${appointment.email}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Teléfono:</td><td style="padding: 8px 16px;">${appointment.phone}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Fecha:</td><td style="padding: 8px 16px;">${dateFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Hora:</td><td style="padding: 8px 16px;">${timeFormatted}</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Duración:</td><td style="padding: 8px 16px;">${appointment.durationMinutes} min</td></tr>
-        <tr><td style="padding: 8px 16px; font-weight: bold;">Link:</td><td style="padding: 8px 16px;"><a href="${appointment.meetingLink}">${appointment.meetingLink}</a></td></tr>
-      </table>
-    `;
+    // Correo al cliente (template corporativo)
+    const clientHtml = appointmentConfirmationEmailTemplate({
+      name: appointment.name,
+      date: dateFormatted,
+      time: timeFormatted,
+      duration: appointment.durationMinutes,
+      meetingLink: appointment.meetingLink,
+    });
 
-    // Correo al cliente
     await this.emailService.sendEmail({
       to: appointment.email,
-      subject: 'Tu cita con Cheky está confirmada ✅',
+      subject: 'Tu cita con Cheky está confirmada',
       htmlBody: clientHtml,
+      attachements: attachments,
     }).catch((e) => this.logger.error('Error enviando correo al cliente', e));
 
-    // Correo a ventas
+    // Correo a ventas (template corporativo)
+    const salesHtml = appointmentSalesNotificationEmailTemplate({
+      name: appointment.name,
+      email: appointment.email,
+      company,
+      phone: appointment.phone || '—',
+      date: dateFormatted,
+      time: timeFormatted,
+      duration: appointment.durationMinutes,
+      meetingLink: appointment.meetingLink,
+    });
+
     await this.emailService.sendEmail({
       to: this.salesInbox,
       subject: `Nueva cita: ${appointment.name} — ${dateFormatted} ${timeFormatted}`,
       htmlBody: salesHtml,
+      attachements: attachments,
     }).catch((e) => this.logger.error('Error enviando correo a ventas', e));
   }
 }
