@@ -22,6 +22,7 @@ import { BoldPaymentModule } from './bold-payment/bold-payment.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CompanyBranchModule } from './company-branch/company-branch.module';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { CommercialAppointmentModule } from './commercial-appointment/commercial-appointment.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AppointmentsModule } from './appointments/appointments.module';
     CompanyBranchModule,
     AppointmentsModule,
     CatalogModule,
+    CommercialAppointmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

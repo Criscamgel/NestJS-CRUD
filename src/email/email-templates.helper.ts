@@ -557,3 +557,224 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// ─────────────────────────────────────────────
+// Template: Cita comercial — confirmación al usuario
+// ─────────────────────────────────────────────
+export type AppointmentConfirmationPayload = {
+  name: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  meetingLink: string;
+  cancelLink: string;
+};
+
+export function appointmentConfirmationEmailTemplate(
+  payload: AppointmentConfirmationPayload,
+): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const { name, date, startTime, endTime, duration, meetingLink, cancelLink } =
+    payload;
+
+  const row = (label: string, value: string) => `
+<tr>
+  <td style="padding: 10px 0; border-bottom: 1px solid #E5E7EB; font-size: 14px; color: ${BRAND.textMuted}; width: 42%;">${label}</td>
+  <td style="padding: 10px 0; border-bottom: 1px solid #E5E7EB; font-size: 14px; color: ${BRAND.textBody}; font-weight: 600;">${value}</td>
+</tr>`;
+
+  const content = `
+    <h2 style="
+      margin: 0 0 8px;
+      color: ${BRAND.neutral};
+      font-size: 22px;
+      font-weight: 700;
+    ">Tu cita fue agendada 📅</h2>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.7;
+    ">
+      Hola <strong>${escapeHtml(name)}</strong>, confirmamos tu reunión con el equipo comercial de <strong>Cheky</strong>.
+      A continuación los detalles:
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px;">
+      ${row('Fecha', escapeHtml(date))}
+      ${row('Horario', `${startTime} – ${endTime} (Colombia)`)}
+      ${row('Duración', `${duration} minutos`)}
+      ${row('Plataforma', 'Videollamada (Jitsi Meet)')}
+    </table>
+
+    ${ctaButton('Unirme a la reunión', meetingLink)}
+
+    <p style="
+      margin: 0 0 6px;
+      color: ${BRAND.textMuted};
+      font-size: 13px;
+      line-height: 1.6;
+    ">
+      Enlace de reunión:
+    </p>
+    <p style="
+      margin: 0 0 24px;
+      word-break: break-all;
+    ">
+      <a href="${meetingLink}"
+        style="color: ${BRAND.primary}; font-size: 12px; text-decoration: underline;"
+      >${meetingLink}</a>
+    </p>
+
+    ${infoBox('También adjuntamos un archivo <strong>.ics</strong> para que agregues esta reunión a tu calendario (Google Calendar, Outlook, Apple Calendar).')}
+
+    <p style="
+      margin: 24px 0 0;
+      color: ${BRAND.textMuted};
+      font-size: 12px;
+      line-height: 1.6;
+    ">
+      ¿Necesitas cancelar? <a href="${cancelLink}" style="color: ${BRAND.primary}; text-decoration: underline;">Haz clic aquí</a>.
+    </p>
+  `;
+
+  return emailLayout(content, showLogo);
+}
+
+// ─────────────────────────────────────────────
+// Template: Cita comercial — notificación al equipo
+// ─────────────────────────────────────────────
+export type AppointmentNotificationPayload = {
+  name: string;
+  email: string;
+  company: string;
+  phone?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  meetingLink: string;
+};
+
+export function appointmentNotificationEmailTemplate(
+  payload: AppointmentNotificationPayload,
+): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const { name, email, company, phone, date, startTime, endTime, duration, meetingLink } =
+    payload;
+
+  const row = (label: string, value: string) => `
+<tr>
+  <td style="
+    padding: 12px 0;
+    border-bottom: 1px solid #E5E7EB;
+    font-size: 14px;
+    color: ${BRAND.textBody};
+  ">
+    <strong style="display:block; color: ${BRAND.neutral}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">${label}</strong>
+    <span style="word-break: break-word;">${escapeHtml(value)}</span>
+  </td>
+</tr>`;
+
+  const content = `
+    <h2 style="
+      margin: 0 0 12px;
+      color: ${BRAND.neutral};
+      font-size: 22px;
+      font-weight: 700;
+    ">Nueva cita comercial agendada 🗓️</h2>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.65;
+    ">
+      Un lead agendó una reunión desde la landing. Detalles para seguimiento:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 16px;">
+      <tbody>
+        ${row('Nombre', name)}
+        ${row('Email', email)}
+        ${row('Empresa', company)}
+        ${phone ? row('Teléfono', phone) : ''}
+        ${row('Fecha', date)}
+        ${row('Horario', `${startTime} – ${endTime} (${duration} min)`)}
+      </tbody>
+    </table>
+
+    ${ctaButton('Unirme a la reunión', meetingLink)}
+
+    ${infoBox('El lead recibió un correo de confirmación con el enlace de reunión y un archivo .ics. Asegúrate de estar disponible en el horario indicado.')}
+  `;
+
+  return emailLayout(content, showLogo);
+}
+
+// ─────────────────────────────────────────────
+// Template: Cita comercial — cancelación (al equipo)
+// ─────────────────────────────────────────────
+export type AppointmentCancellationPayload = {
+  name: string;
+  email: string;
+  company: string;
+  date: string;
+  startTime: string;
+  reason?: string;
+};
+
+export function appointmentCancellationEmailTemplate(
+  payload: AppointmentCancellationPayload,
+): string {
+  const showLogo = existsSync(getEmailLogoPath());
+  const { name, email, company, date, startTime, reason } = payload;
+
+  const row = (label: string, value: string) => `
+<tr>
+  <td style="
+    padding: 12px 0;
+    border-bottom: 1px solid #E5E7EB;
+    font-size: 14px;
+    color: ${BRAND.textBody};
+  ">
+    <strong style="display:block; color: ${BRAND.neutral}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">${label}</strong>
+    <span style="word-break: break-word;">${escapeHtml(value)}</span>
+  </td>
+</tr>`;
+
+  const content = `
+    <h2 style="
+      margin: 0 0 12px;
+      color: ${BRAND.neutral};
+      font-size: 22px;
+      font-weight: 700;
+    ">Cita cancelada ❌</h2>
+
+    <p style="
+      margin: 0 0 20px;
+      color: ${BRAND.textBody};
+      font-size: 15px;
+      line-height: 1.65;
+    ">
+      Un lead canceló su reunión comercial. Detalles:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 16px;">
+      <tbody>
+        ${row('Nombre', name)}
+        ${row('Email', email)}
+        ${row('Empresa', company)}
+        ${row('Fecha', date)}
+        ${row('Hora', startTime)}
+        ${reason ? row('Razón', reason) : ''}
+      </tbody>
+    </table>
+
+    ${infoBox('El horario queda disponible para nuevas citas. Si deseas hacer seguimiento, contacta al lead usando su email.')}
+  `;
+
+  return emailLayout(content, showLogo);
+}
