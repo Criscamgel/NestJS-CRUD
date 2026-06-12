@@ -112,7 +112,7 @@ export class AppointmentsService {
       const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const slots: string[] = [];
 
-      for (let m = startMinutes; m + durationMinutes <= endMinutes; m += this.slotDuration) {
+      for (let m = startMinutes; m + durationMinutes <= endMinutes; m += durationMinutes) {
         const hour = Math.floor(m / 60);
         const min = m % 60;
         const slotLabel = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
