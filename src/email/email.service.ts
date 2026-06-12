@@ -11,9 +11,13 @@ export interface SendMailOptions {
 
 export interface Attachement {
   filename: string;
-  path: string;
+  path?: string;
   /** Inline image: use same value in HTML as <img src="cid:..."> */
   cid?: string;
+  /** Content as Buffer (alternative to path, e.g. for .ics files) */
+  content?: Buffer;
+  /** MIME content type (e.g. 'text/calendar; method=REQUEST') */
+  contentType?: string;
 }
 
 @Injectable()
