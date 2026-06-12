@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
-import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 
 /**
  * Endpoints públicos para agendamiento de citas desde la landing.
@@ -11,24 +10,25 @@ import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
-  /** Obtener slots disponibles para una fecha dada. */
-  @Get('slots')
-  getAvailableSlots(@Query() query: GetAvailableSlotsDto) {
-    return this.appointmentsService.getAvailableSlots(query.date, query.duration);
+  /** Configuración pública del sistema de citas. */
+  @Get('config')
+  getConfig() {
+    return this.appointmentsService.getPublicConfig();
+  }
+
+  /** Slots disponibles para un mes y duración dados. */
+  @Get('available-slots')
+  getAvailableSlots(
+    @Query('month') month: string,
+    @Query('duration') duration: string,
+  ) {
+    const dur = parseInt(duration, 10) || 30;
+    return this.appointmentsService.getAvailableSlotsForMonth(month, dur);
   }
 
   /** Agendar una cita. */
-  @Post()
-  create(@Body() dto: CreateAppointmentDto) {
-    return this.appointmentsService.create(dto);
-  }
-
-  /** Verificar si un email puede agendar (límite mensual). */
-  @Get('can-schedule')
-  canSchedule(@Query('email') email: string) {
-    if (!email?.trim()) {
-      return { canSchedule: true };
-    }
-    return this.appointmentsService.canSchedule(email);
+  @Post('book')
+  book(@Body() dto: CreateAppointmentDto) {
+    return this.appointmentsService.book(dto);
   }
 }

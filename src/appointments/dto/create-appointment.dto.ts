@@ -1,4 +1,4 @@
-import { IsEmail, IsInt, IsISO8601, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateAppointmentDto {
@@ -10,17 +10,31 @@ export class CreateAppointmentDto {
   email!: string;
 
   @IsString()
-  @MinLength(7)
-  phone!: string;
+  @MinLength(1)
+  company!: string;
 
-  /** Fecha y hora de inicio en formato ISO 8601 (UTC). */
-  @IsISO8601()
-  startAt!: string;
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  /** Fecha en formato YYYY-MM-DD. */
+  @IsString()
+  @MinLength(10)
+  date!: string;
+
+  /** Hora de inicio en formato HH:mm (24h). */
+  @IsString()
+  @MinLength(5)
+  startTime!: string;
 
   /** Duración en minutos (15, 30, 45, 60). */
   @Type(() => Number)
   @IsInt()
   @Min(15)
   @Max(60)
-  durationMinutes!: number;
+  duration!: number;
+
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
 }
