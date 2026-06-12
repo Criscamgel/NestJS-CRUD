@@ -14,7 +14,7 @@ import { isBusinessDay } from './colombia-holidays';
 import { EmailService } from 'src/email/email.service';
 import {
   appointmentConfirmationEmailTemplate,
-  appointmentSalesNotificationEmailTemplate,
+  appointmentNotificationEmailTemplate,
   getEmailLogoAttachment,
 } from 'src/email/email-templates.helper';
 
@@ -274,13 +274,24 @@ export class AppointmentsService {
     const logoAtt = getEmailLogoAttachment();
     const attachments = logoAtt ? [logoAtt] : [];
 
+    // Calcular endTime
+    const endTime = new Date(appointment.startAt.getTime() + appointment.durationMinutes * 60 * 1000);
+    const endTimeFormatted = endTime.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: this.timezone,
+    });
+
     // Correo al cliente (template corporativo)
     const clientHtml = appointmentConfirmationEmailTemplate({
       name: appointment.name,
       date: dateFormatted,
-      time: timeFormatted,
+      startTime: timeFormatted,
+      endTime: endTimeFormatted,
       duration: appointment.durationMinutes,
       meetingLink: appointment.meetingLink,
+      cancelLink: '', // No implementado aún
     });
 
     await this.emailService.sendEmail({
@@ -291,13 +302,14 @@ export class AppointmentsService {
     }).catch((e) => this.logger.error('Error enviando correo al cliente', e));
 
     // Correo a ventas (template corporativo)
-    const salesHtml = appointmentSalesNotificationEmailTemplate({
+    const salesHtml = appointmentNotificationEmailTemplate({
       name: appointment.name,
       email: appointment.email,
       company,
       phone: appointment.phone || '—',
       date: dateFormatted,
-      time: timeFormatted,
+      startTime: timeFormatted,
+      endTime: endTimeFormatted,
       duration: appointment.durationMinutes,
       meetingLink: appointment.meetingLink,
     });
