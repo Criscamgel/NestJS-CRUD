@@ -16,11 +16,11 @@ export class AppointmentConfig extends Document {
   endHour!: string;
 
   /** Intervalo entre slots en minutos */
-  @Prop({ default: 15 })
+  @Prop({ default: 60 })
   slotDuration!: number;
 
   /** Duraciones que el usuario puede elegir (en minutos) */
-  @Prop({ type: [Number], default: [15, 30, 45, 60] })
+  @Prop({ type: [Number], default: [60] })
   allowedDurations!: number[];
 
   /** Base del link de reunión (se concatena con publicId) */

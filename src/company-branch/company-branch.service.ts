@@ -257,11 +257,7 @@ export class CompanyBranchService {
     dto: UpdateCompanyBranchDto,
     actor: User,
   ) {
-    if (!this.isSuper(actor)) {
-      throw new ForbiddenException(
-        'Solo el super administrador puede editar los datos de una sede.',
-      );
-    }
+    this.assertManageCompany(actor, companyId);
     await this.findOne(companyId, branchId, actor);
 
     const patch: Record<string, unknown> = {};

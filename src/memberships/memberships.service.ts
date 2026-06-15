@@ -258,8 +258,8 @@ export class MembershipsService {
   }
 
   /**
-   * Desactiva cuentas de la empresa (admin y user) solo cuando no hay membresía vigente.
-   * Agotar el cupo de checks no desactiva cuentas.
+   * Desactiva cuentas de la empresa (solo rol user) cuando no hay membresía vigente.
+   * Los administradores mantienen acceso de lectura con restricciones de escritura.
    */
   private async deactivateCompanyUsersWhenMembershipExpired(
     companyId: string,
@@ -280,12 +280,18 @@ export class MembershipsService {
       return;
     }
 
-    await this.userModel.updateMany(this.companyMembersFilter(cid), {
-      $set: {
-        isActive: false,
-        deactivationReason: USER_DEACTIVATION_REASON_MEMBERSHIP,
+    // Solo desactivar usuarios con rol 'user', NO admins ni superAdmins
+    await this.userModel.updateMany(
+      {
+        ...this.normalCheckUserFilter(cid),
       },
-    });
+      {
+        $set: {
+          isActive: false,
+          deactivationReason: USER_DEACTIVATION_REASON_MEMBERSHIP,
+        },
+      },
+    );
   }
 
   private async reactivateCompanyUsersForCompany(companyId: string): Promise<void> {
