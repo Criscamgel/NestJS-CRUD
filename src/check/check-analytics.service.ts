@@ -184,7 +184,7 @@ export class CheckAnalyticsService {
                 $sum: {
                   $cond: [
                     { $ne: ['$trustScore', null] },
-                    { $subtract: [100, '$trustScore'] },
+                    '$trustScore',
                     0,
                   ],
                 },
@@ -319,7 +319,7 @@ export class CheckAnalyticsService {
                 $sum: {
                   $cond: [
                     { $ne: ['$trustScore', null] },
-                    { $subtract: [100, '$trustScore'] },
+                    '$trustScore',
                     0,
                   ],
                 },
