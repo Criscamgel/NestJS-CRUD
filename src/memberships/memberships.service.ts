@@ -37,7 +37,8 @@ function monthKey(d = new Date()): string {
 
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
+  // Cada "mes" de plan equivale a 30 días calendario exactos
+  d.setDate(d.getDate() + (months * 30));
   return d;
 }
 
