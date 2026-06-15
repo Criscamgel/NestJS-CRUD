@@ -65,11 +65,28 @@ export class PaymentHistoryService {
       ...companyFilter,
     };
 
-    // Buscar por referencia o planId (se enriquece con nombre después)
-    const searchFilter = buildRegexOrFilter<BoldCheckoutIntent>(
-      paginationQuery.search,
-      ['ref', 'planId'],
-    );
+    // Buscar por referencia, planId o nombre de empresa
+    let searchFilter: Record<string, unknown> = {};
+    const searchTerm = paginationQuery.search?.trim();
+    if (searchTerm) {
+      const regex = new RegExp(searchTerm, 'i');
+      // Buscar empresas que coincidan con el texto
+      const matchingCompanies = await this.companyModel
+        .find({ name: regex })
+        .select('id')
+        .lean();
+      const matchingCompanyIds = matchingCompanies.map((c) => c.id);
+
+      searchFilter = {
+        $or: [
+          { ref: regex },
+          { planId: regex },
+          ...(matchingCompanyIds.length > 0
+            ? [{ companyId: { $in: matchingCompanyIds } }]
+            : []),
+        ],
+      };
+    }
 
     const filter =
       Object.keys(searchFilter).length > 0

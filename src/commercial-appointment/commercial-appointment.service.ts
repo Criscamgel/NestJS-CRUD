@@ -408,7 +408,14 @@ export class CommercialAppointmentService {
       to: inbox,
       subject: `Nueva cita comercial — ${appointment.company} (${appointment.startTime})`,
       htmlBody: teamHtml,
-      attachements: baseAttachments,
+      attachements: [
+        ...baseAttachments,
+        {
+          filename: 'reunion-cheky.ics',
+          content: Buffer.from(icsContent, 'utf-8'),
+          contentType: 'text/calendar; method=REQUEST',
+        },
+      ],
     });
   }
 
