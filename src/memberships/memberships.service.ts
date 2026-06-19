@@ -1019,6 +1019,8 @@ export class MembershipsService {
       planName,
       membershipExpiresAt:
         m.expiresAt instanceof Date ? m.expiresAt.toISOString() : String(m.expiresAt),
+      membershipStartedAt:
+        m.startedAt instanceof Date ? m.startedAt.toISOString() : String(m.startedAt ?? ''),
       daysUntilExpiry,
       checksUsedInPeriod: usedPeriod,
       checksPendingMonthly,
