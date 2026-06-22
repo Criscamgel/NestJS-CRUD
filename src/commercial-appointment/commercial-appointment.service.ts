@@ -57,7 +57,14 @@ export class CommercialAppointmentService implements OnModuleInit {
     const hours = this.getBusinessHours();
     const result = await this.configModel.updateMany(
       {},
-      { $set: { startHour: hours.startHour, endHour: hours.endHour } },
+      {
+        $set: {
+          startHour: hours.startHour,
+          endHour: hours.endHour,
+          slotDuration: 60,
+          allowedDurations: [60],
+        },
+      },
     );
     this.logger.log(
       `Horario comercial citas: ${hours.startHour}-${hours.endHour} (America/Bogota). Configs sync: ${result.modifiedCount}`,
@@ -149,11 +156,12 @@ export class CommercialAppointmentService implements OnModuleInit {
 
   async getPublicConfig() {
     const config = await this.getConfig();
+    const hours = this.getBusinessHours();
     return {
       availableDays: config.availableDays,
-      startHour: config.startHour,
-      endHour: config.endHour,
-      allowedDurations: config.allowedDurations,
+      startHour: hours.startHour,
+      endHour: hours.endHour,
+      allowedDurations: [60],
       timezone: config.timezone,
       maxAdvanceDays: config.maxAdvanceDays,
     };
@@ -195,9 +203,10 @@ export class CommercialAppointmentService implements OnModuleInit {
       monthEndStr,
     );
 
-    const startMinutes = this.timeToMinutes(config.startHour);
-    const endMinutes = this.timeToMinutes(config.endHour);
-    const slotInterval = config.slotDuration;
+    const hours = this.getBusinessHours();
+    const startMinutes = this.timeToMinutes(hours.startHour);
+    const endMinutes = this.timeToMinutes(hours.endHour);
+    const slotInterval = config.slotDuration || 60;
 
     const result: { date: string; slots: string[] }[] = [];
 

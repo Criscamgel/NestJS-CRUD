@@ -21,7 +21,6 @@ import { SuperAdminDashboardModule } from './super-admin-dashboard/super-admin-d
 import { BoldPaymentModule } from './bold-payment/bold-payment.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CompanyBranchModule } from './company-branch/company-branch.module';
-import { AppointmentsModule } from './appointments/appointments.module';
 import { CommercialAppointmentModule } from './commercial-appointment/commercial-appointment.module';
 
 @Module({
@@ -50,9 +49,8 @@ import { CommercialAppointmentModule } from './commercial-appointment/commercial
     SuperAdminDashboardModule,
     BoldPaymentModule,
     CompanyBranchModule,
-    AppointmentsModule,
-    CatalogModule,
     CommercialAppointmentModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [AppService],
