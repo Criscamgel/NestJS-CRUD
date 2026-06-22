@@ -32,11 +32,10 @@ import { generateIcsEvent } from './utils/ics-generator.util';
 import { PaginationQueryDto, DEFAULT_PAGE, DEFAULT_LIMIT } from 'src/common/dto/pagination-query.dto';
 import { CaldavCalendarService } from './calendar/caldav-calendar.service';
 import type { BusyInterval } from './calendar/parse-ics-busy.util';
+import { COMMERCIAL_APPOINTMENT_SCHEDULE } from './commercial-appointment.constants';
 
 /** Antispam: mismo IP no puede crear otra cita antes de este intervalo (ms) */
 const RATE_WINDOW_MS = 120_000;
-const DEFAULT_APPOINTMENT_START = '09:00';
-const DEFAULT_APPOINTMENT_END = '18:00';
 
 @Injectable()
 export class CommercialAppointmentService implements OnModuleInit {
@@ -54,34 +53,30 @@ export class CommercialAppointmentService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const hours = this.getBusinessHours();
     const result = await this.configModel.updateMany(
       {},
       {
         $set: {
-          startHour: hours.startHour,
-          endHour: hours.endHour,
-          slotDuration: 60,
-          allowedDurations: [60],
+          startHour: COMMERCIAL_APPOINTMENT_SCHEDULE.startHour,
+          endHour: COMMERCIAL_APPOINTMENT_SCHEDULE.endHour,
+          slotDuration: COMMERCIAL_APPOINTMENT_SCHEDULE.slotDurationMinutes,
+          allowedDurations: [...COMMERCIAL_APPOINTMENT_SCHEDULE.allowedDurations],
+          timezone: COMMERCIAL_APPOINTMENT_SCHEDULE.timezone,
+          maxAdvanceDays: COMMERCIAL_APPOINTMENT_SCHEDULE.maxAdvanceDays,
+          availableDays: [...COMMERCIAL_APPOINTMENT_SCHEDULE.availableDays],
         },
       },
     );
     this.logger.log(
-      `Horario comercial citas: ${hours.startHour}-${hours.endHour} (America/Bogota). Configs sync: ${result.modifiedCount}`,
+      `Horario comercial citas (fijo): ${COMMERCIAL_APPOINTMENT_SCHEDULE.startHour}-${COMMERCIAL_APPOINTMENT_SCHEDULE.endHour} COT. Configs sync: ${result.modifiedCount}`,
     );
   }
 
-  /** Horario hábil: env (Dokploy) > default 09:00-18:00. Siempre prevalece sobre MongoDB. */
   private getBusinessHours(): { startHour: string; endHour: string } {
-    const startHour =
-      process.env.APPOINTMENT_START_HOUR?.trim() ||
-      this.configService.get<string>('APPOINTMENT_START_HOUR')?.trim() ||
-      DEFAULT_APPOINTMENT_START;
-    const endHour =
-      process.env.APPOINTMENT_END_HOUR?.trim() ||
-      this.configService.get<string>('APPOINTMENT_END_HOUR')?.trim() ||
-      DEFAULT_APPOINTMENT_END;
-    return { startHour, endHour };
+    return {
+      startHour: COMMERCIAL_APPOINTMENT_SCHEDULE.startHour,
+      endHour: COMMERCIAL_APPOINTMENT_SCHEDULE.endHour,
+    };
   }
 
   // ─── Helpers ───────────────────────────────────────────────
@@ -155,15 +150,13 @@ export class CommercialAppointmentService implements OnModuleInit {
   // ─── Public: Config ────────────────────────────────────────
 
   async getPublicConfig() {
-    const config = await this.getConfig();
-    const hours = this.getBusinessHours();
     return {
-      availableDays: config.availableDays,
-      startHour: hours.startHour,
-      endHour: hours.endHour,
-      allowedDurations: [60],
-      timezone: config.timezone,
-      maxAdvanceDays: config.maxAdvanceDays,
+      availableDays: [...COMMERCIAL_APPOINTMENT_SCHEDULE.availableDays],
+      startHour: COMMERCIAL_APPOINTMENT_SCHEDULE.startHour,
+      endHour: COMMERCIAL_APPOINTMENT_SCHEDULE.endHour,
+      allowedDurations: [...COMMERCIAL_APPOINTMENT_SCHEDULE.allowedDurations],
+      timezone: COMMERCIAL_APPOINTMENT_SCHEDULE.timezone,
+      maxAdvanceDays: COMMERCIAL_APPOINTMENT_SCHEDULE.maxAdvanceDays,
     };
   }
 
@@ -206,7 +199,7 @@ export class CommercialAppointmentService implements OnModuleInit {
     const hours = this.getBusinessHours();
     const startMinutes = this.timeToMinutes(hours.startHour);
     const endMinutes = this.timeToMinutes(hours.endHour);
-    const slotInterval = config.slotDuration || 60;
+    const slotInterval = COMMERCIAL_APPOINTMENT_SCHEDULE.slotDurationMinutes;
 
     const result: { date: string; slots: string[] }[] = [];
 
