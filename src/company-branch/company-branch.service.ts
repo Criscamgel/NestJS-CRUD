@@ -93,6 +93,22 @@ export class CompanyBranchService {
     }
   }
 
+  /** Admin de empresa: exige membresía activa para editar o activar/desactivar sedes. */
+  private async assertWriteMembershipIfCompanyAdmin(
+    actor: User,
+    companyId: string,
+  ): Promise<void> {
+    if (this.isSuper(actor)) return;
+    const roles = actor.roles || [];
+    const legacy = (actor as { role?: string }).role;
+    const isAdmin = roles.includes('admin') || legacy === 'admin';
+    if (isAdmin) {
+      await this.membershipsService.assertActiveMembershipForWrite(
+        companyId.trim(),
+      );
+    }
+  }
+
   async create(companyId: string, dto: CreateCompanyBranchDto, actor: User) {
     this.assertManageCompany(actor, companyId);
     await this.assertCompanyExists(companyId);
@@ -260,6 +276,7 @@ export class CompanyBranchService {
     actor: User,
   ) {
     this.assertManageCompany(actor, companyId);
+    await this.assertWriteMembershipIfCompanyAdmin(actor, companyId);
     await this.findOne(companyId, branchId, actor);
 
     const patch: Record<string, unknown> = {};
@@ -284,6 +301,7 @@ export class CompanyBranchService {
 
   async toggleStatus(companyId: string, branchId: string, actor: User) {
     this.assertManageCompany(actor, companyId);
+    await this.assertWriteMembershipIfCompanyAdmin(actor, companyId);
     const branch = await this.branchModel
       .findOne({ id: branchId.trim(), companyId: companyId.trim() })
       .exec();

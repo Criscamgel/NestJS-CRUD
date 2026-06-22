@@ -15,6 +15,7 @@ import {
   resolvePagination,
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
+import { MembershipsService } from 'src/memberships/memberships.service';
 
 type PaymentHistoryRow = {
   ref: string;
@@ -43,6 +44,7 @@ export class PaymentHistoryService {
     private readonly userModel: Model<User>,
     @InjectModel(Company.name)
     private readonly companyModel: Model<Company>,
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   /** Listado paginado de pagos completados. */
@@ -158,6 +160,12 @@ export class PaymentHistoryService {
     const isSuperAdmin = requesterRoles.includes('superAdmin');
     if (!isSuperAdmin && intent.companyId !== requester.company) {
       throw new ForbiddenException('No tienes permiso para descargar esta factura.');
+    }
+
+    if (!isSuperAdmin && requester.company) {
+      await this.membershipsService.assertActiveMembershipForWrite(
+        String(requester.company),
+      );
     }
 
     const plan = await this.planModel.findOne({ id: intent.planId }).lean();

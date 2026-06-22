@@ -693,6 +693,18 @@ export class MembershipsService {
     }
   }
 
+  /**
+   * Bloquea mutaciones (editar, activar/desactivar, descargas) sin membresía activa.
+   */
+  async assertActiveMembershipForWrite(companyId: string): Promise<void> {
+    const m = await this.getActiveMembershipForCompany(companyId);
+    if (!m) {
+      throw new ForbiddenException(
+        'Tu membresía ha vencido. Renueva tu plan para realizar esta acción.',
+      );
+    }
+  }
+
   /** Alinea el contador mensual si cambió el mes calendario. */
   async syncMonthForCompany(companyId: string): Promise<void> {
     const m = await this.getActiveMembershipForCompany(companyId);
