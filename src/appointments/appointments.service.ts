@@ -38,7 +38,7 @@ export class AppointmentsService {
   }
 
   private get startHour(): string {
-    return this.configService.get<string>('APPOINTMENT_START_HOUR') || '08:00';
+    return this.configService.get<string>('APPOINTMENT_START_HOUR') || '09:00';
   }
 
   private get endHour(): string {

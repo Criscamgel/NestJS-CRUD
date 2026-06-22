@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -34,9 +35,11 @@ import type { BusyInterval } from './calendar/parse-ics-busy.util';
 
 /** Antispam: mismo IP no puede crear otra cita antes de este intervalo (ms) */
 const RATE_WINDOW_MS = 120_000;
+const DEFAULT_APPOINTMENT_START = '09:00';
+const DEFAULT_APPOINTMENT_END = '18:00';
 
 @Injectable()
-export class CommercialAppointmentService {
+export class CommercialAppointmentService implements OnModuleInit {
   private readonly logger = new Logger(CommercialAppointmentService.name);
   private readonly lastBookByIp = new Map<string, number>();
 
@@ -50,27 +53,48 @@ export class CommercialAppointmentService {
     private readonly caldavCalendarService: CaldavCalendarService,
   ) {}
 
+  async onModuleInit() {
+    const hours = this.getBusinessHours();
+    const result = await this.configModel.updateMany(
+      {},
+      { $set: { startHour: hours.startHour, endHour: hours.endHour } },
+    );
+    this.logger.log(
+      `Horario comercial citas: ${hours.startHour}-${hours.endHour} (America/Bogota). Configs sync: ${result.modifiedCount}`,
+    );
+  }
+
+  /** Horario hábil: env (Dokploy) > default 09:00-18:00. Siempre prevalece sobre MongoDB. */
+  private getBusinessHours(): { startHour: string; endHour: string } {
+    const startHour =
+      process.env.APPOINTMENT_START_HOUR?.trim() ||
+      this.configService.get<string>('APPOINTMENT_START_HOUR')?.trim() ||
+      DEFAULT_APPOINTMENT_START;
+    const endHour =
+      process.env.APPOINTMENT_END_HOUR?.trim() ||
+      this.configService.get<string>('APPOINTMENT_END_HOUR')?.trim() ||
+      DEFAULT_APPOINTMENT_END;
+    return { startHour, endHour };
+  }
+
   // ─── Helpers ───────────────────────────────────────────────
 
   private async getConfig(): Promise<AppointmentConfig> {
-    const envStart = process.env.APPOINTMENT_START_HOUR?.trim() || '09:00';
-    const envEnd = process.env.APPOINTMENT_END_HOUR?.trim() || '18:00';
-
     let config = await this.configModel.findOne().exec();
+    const hours = this.getBusinessHours();
+
     if (!config) {
       config = await this.configModel.create({
-        startHour: envStart,
-        endHour: envEnd,
+        startHour: hours.startHour,
+        endHour: hours.endHour,
+        allowedDurations: [60],
       });
       return config;
     }
 
-    if (config.startHour !== envStart || config.endHour !== envEnd) {
-      config.startHour = envStart;
-      config.endHour = envEnd;
-      await config.save();
-    }
-
+    // Env/default siempre gana — evita quedar pegado a 08:00 en MongoDB
+    config.startHour = hours.startHour;
+    config.endHour = hours.endHour;
     return config;
   }
 

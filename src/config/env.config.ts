@@ -37,4 +37,6 @@ export const EnvConfiguration = () => ({
     caldavPassword: process.env.CALDAV_PASSWORD?.trim() ?? '',
     caldavCalendarUrl: process.env.CALDAV_CALENDAR_URL?.trim() ?? '',
     caldavCalendarName: process.env.CALDAV_CALENDAR_NAME?.trim() ?? '',
+    appointmentStartHour: process.env.APPOINTMENT_START_HOUR?.trim() || '09:00',
+    appointmentEndHour: process.env.APPOINTMENT_END_HOUR?.trim() || '18:00',
 });
