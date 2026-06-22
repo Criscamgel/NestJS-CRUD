@@ -13,6 +13,7 @@ import {
   AppointmentConfigSchema,
 } from './entities/appointment-config.entity';
 import { CommercialAppointmentService } from './commercial-appointment.service';
+import { CaldavCalendarService } from './calendar/caldav-calendar.service';
 import { PublicAppointmentController } from './public-appointment.controller';
 import { AppointmentAdminController } from './appointment-admin.controller';
 
@@ -28,6 +29,6 @@ import { AppointmentAdminController } from './appointment-admin.controller';
     AuthModule,
   ],
   controllers: [PublicAppointmentController, AppointmentAdminController],
-  providers: [CommercialAppointmentService],
+  providers: [CommercialAppointmentService, CaldavCalendarService],
 })
 export class CommercialAppointmentModule {}

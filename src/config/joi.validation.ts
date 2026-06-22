@@ -31,6 +31,12 @@ export const JoiValidationSchema = Joi.object({
     DEBUG_BOLD_WEBHOOK: Joi.string().valid('true', 'false').optional(),
     TURNSTILE_SECRET_KEY: Joi.string().optional().allow(''),
     TURNSTILE_ENABLED: Joi.string().valid('true', 'false', '1', '0').optional(),
+    CALDAV_ENABLED: Joi.string().valid('true', 'false', '1', '0').optional(),
+    CALDAV_SERVER_URL: Joi.string().uri().optional(),
+    CALDAV_USERNAME: Joi.string().email().optional().allow(''),
+    CALDAV_PASSWORD: Joi.string().optional().allow(''),
+    CALDAV_CALENDAR_URL: Joi.string().uri().optional().allow(''),
+    CALDAV_CALENDAR_NAME: Joi.string().optional().allow(''),
     // Seed - SuperAdmins (opcionales para no bloquear el arranque)
     SEED_ADMIN1_EMAIL: Joi.string().email().optional(),
     SEED_ADMIN1_DOCUMENT: Joi.string().optional(),
