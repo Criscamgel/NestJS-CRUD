@@ -293,6 +293,35 @@ export class MembershipsService {
         },
       },
     );
+
+    await this.reactivateCompanyAdminsDeactivatedByMembership(cid);
+  }
+
+  /**
+   * Los admin de empresa no deben quedar inactivos cuando vence la membresía.
+   * Corrige desactivaciones erróneas (legacy) con `membership_expired`.
+   */
+  async reactivateCompanyAdminsDeactivatedByMembership(
+    companyId: string,
+  ): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return;
+
+    await this.userModel.updateMany(
+      {
+        ...this.userCompanyFilter(cid),
+        $or: [{ roles: { $in: ['admin'] } }, { role: 'admin' }],
+        $nor: [
+          { roles: 'superAdmin' },
+          { roles: { $in: ['superAdmin'] } },
+        ],
+        deactivationReason: USER_DEACTIVATION_REASON_MEMBERSHIP,
+      },
+      {
+        $set: { isActive: true },
+        $unset: { deactivationReason: '' },
+      },
+    );
   }
 
   private async reactivateCompanyUsersForCompany(companyId: string): Promise<void> {

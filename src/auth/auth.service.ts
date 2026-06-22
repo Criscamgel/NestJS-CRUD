@@ -31,7 +31,7 @@ import {
   normalizeAuthEmail,
 } from './auth.utils';
 import { MembershipsService } from 'src/memberships/memberships.service';
-import { isUserDeactivatedByAdmin } from 'src/users/user-account.constants';
+import { isUserDeactivatedByAdmin, isCompanyAdminActor } from 'src/users/user-account.constants';
 import { TurnstileService } from 'src/turnstile/turnstile.service';
 
 @Injectable()
@@ -78,13 +78,22 @@ export class AuthService {
           getInactiveAccountMessage(user.deactivationReason),
         );
       }
-      if (user.company) {
+      if (user.company && isCompanyAdminActor(user)) {
+        await this.membershipsService.reactivateCompanyAdminsDeactivatedByMembership(
+          String(user.company),
+        );
+        user = await this.userModel
+          .findOne({ email: emailNorm })
+          .select('email password id isActive company deactivationReason roles role')
+          .lean();
+      }
+      if (user?.company) {
         await this.membershipsService.ensureCompanyUsersActiveWhenMembershipValid(
           String(user.company),
         );
         user = await this.userModel
           .findOne({ email: emailNorm })
-          .select('email password id isActive company deactivationReason')
+          .select('email password id isActive company deactivationReason roles role')
           .lean();
       }
       if (!user || isUserMarkedInactive(user.isActive)) {

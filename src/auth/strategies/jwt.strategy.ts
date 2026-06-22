@@ -9,7 +9,7 @@ import { Inject, Injectable, UnauthorizedException, forwardRef } from "@nestjs/c
 import { BlacklistedToken } from "../entities/blacklisted-token.entity";
 import { MembershipsService } from "src/memberships/memberships.service";
 import { isUserMarkedInactive } from "../auth.utils";
-import { isUserDeactivatedByAdmin } from "src/users/user-account.constants";
+import { isUserDeactivatedByAdmin, isCompanyAdminActor } from "src/users/user-account.constants";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -50,7 +50,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           if (isUserDeactivatedByAdmin(user.deactivationReason)) {
             throw new UnauthorizedException('No tiene los permisos suficientes para acceder a este recurso');
           }
-          if (user.company) {
+          if (user.company && isCompanyAdminActor(user)) {
+            await this.membershipsService.reactivateCompanyAdminsDeactivatedByMembership(
+              String(user.company),
+            );
+            user = await this.userModel.findOne({ id });
+          }
+          if (user?.company) {
             await this.membershipsService.ensureCompanyUsersActiveWhenMembershipValid(
               String(user.company),
             );

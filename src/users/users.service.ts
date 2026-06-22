@@ -114,7 +114,11 @@ export class UsersService {
     }
 
     try {
-      if (createUserDto.role === ValidRoles.user && createUserDto.company) {
+      if (
+        !isCreatorSuperAdmin &&
+        createUserDto.role === ValidRoles.user &&
+        createUserDto.company
+      ) {
         await this.membershipsService.assertCanAddNormalUser(
           String(createUserDto.company),
         );

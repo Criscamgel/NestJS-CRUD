@@ -96,7 +96,9 @@ export class CompanyBranchService {
   async create(companyId: string, dto: CreateCompanyBranchDto, actor: User) {
     this.assertManageCompany(actor, companyId);
     await this.assertCompanyExists(companyId);
-    await this.membershipsService.assertCanAddBranch(companyId);
+    if (!this.isSuper(actor)) {
+      await this.membershipsService.assertCanAddBranch(companyId);
+    }
 
     const counter = await this.counterIdModel.findByIdAndUpdate(
       'company_branches',
