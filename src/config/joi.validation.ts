@@ -37,6 +37,9 @@ export const JoiValidationSchema = Joi.object({
     CALDAV_PASSWORD: Joi.string().optional().allow(''),
     CALDAV_CALENDAR_URL: Joi.string().uri().optional().allow(''),
     CALDAV_CALENDAR_NAME: Joi.string().optional().allow(''),
+    APPOINTMENT_START_HOUR: Joi.string().pattern(/^\d{2}:\d{2}$/).optional(),
+    APPOINTMENT_END_HOUR: Joi.string().pattern(/^\d{2}:\d{2}$/).optional(),
+    APPOINTMENT_INBOX: Joi.string().email().optional(),
     // Seed - SuperAdmins (opcionales para no bloquear el arranque)
     SEED_ADMIN1_EMAIL: Joi.string().email().optional(),
     SEED_ADMIN1_DOCUMENT: Joi.string().optional(),

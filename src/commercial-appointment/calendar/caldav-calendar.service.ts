@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generateIcsEvent, type IcsEventData } from '../utils/ics-generator.util';
+import { generateCaldavIcsEvent, type IcsEventData } from '../utils/ics-generator.util';
 import {
   extractCalendarDataBlocks,
   extractHrefValues,
@@ -19,39 +19,68 @@ const REPORT_HEADERS = {
 };
 
 @Injectable()
-export class CaldavCalendarService {
+export class CaldavCalendarService implements OnModuleInit {
   private readonly logger = new Logger(CaldavCalendarService.name);
   private cachedCalendarUrl: string | null | undefined;
 
   constructor(private readonly configService: ConfigService) {}
 
+  async onModuleInit() {
+    if (!this.isEnabled()) {
+      this.logger.warn(
+        'CalDAV deshabilitado: configure CALDAV_USERNAME y CALDAV_PASSWORD (y CALDAV_ENABLED=true).',
+      );
+      return;
+    }
+
+    const url = await this.getCalendarCollectionUrl();
+    if (url) {
+      this.logger.log(`CalDAV listo — calendario: ${url}`);
+    } else {
+      this.logger.error(
+        'CalDAV habilitado pero no se pudo conectar al calendario. Revisa credenciales o CALDAV_CALENDAR_URL.',
+      );
+    }
+  }
+
   isEnabled(): boolean {
-    const enabled = this.configService.get<string>('CALDAV_ENABLED')?.trim().toLowerCase();
+    const enabled = this.readEnv('CALDAV_ENABLED')?.toLowerCase();
     if (enabled === 'false' || enabled === '0') return false;
     return Boolean(this.username && this.password);
   }
 
+  /** Lee env directo (Dokploy) o clave camelCase del config loader. */
+  private readEnv(key: string): string | undefined {
+    const fromProcess = process.env[key]?.trim();
+    if (fromProcess) return fromProcess;
+
+    const camelKey = key
+      .toLowerCase()
+      .replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    const fromConfig = this.configService.get<string>(key)?.trim()
+      || this.configService.get<string>(camelKey)?.trim();
+    return fromConfig || undefined;
+  }
+
   private get serverUrl(): string {
-    const raw =
-      this.configService.get<string>('CALDAV_SERVER_URL')?.trim() ||
-      'https://dav.privateemail.com';
+    const raw = this.readEnv('CALDAV_SERVER_URL') || 'https://dav.privateemail.com';
     return raw.replace(/\/+$/, '');
   }
 
   private get username(): string {
     return (
-      this.configService.get<string>('CALDAV_USERNAME')?.trim() ||
-      this.configService.get<string>('APPOINTMENT_INBOX')?.trim() ||
+      this.readEnv('CALDAV_USERNAME') ||
+      this.readEnv('APPOINTMENT_INBOX') ||
       ''
     );
   }
 
   private get password(): string {
-    return this.configService.get<string>('CALDAV_PASSWORD')?.trim() || '';
+    return this.readEnv('CALDAV_PASSWORD') || '';
   }
 
   private get calendarUrlOverride(): string | undefined {
-    const raw = this.configService.get<string>('CALDAV_CALENDAR_URL')?.trim();
+    const raw = this.readEnv('CALDAV_CALENDAR_URL');
     return raw ? raw.replace(/\/+$/, '') + '/' : undefined;
   }
 
@@ -85,11 +114,6 @@ export class CaldavCalendarService {
     try {
       const discovered = await this.discoverCalendarCollectionUrl();
       this.cachedCalendarUrl = discovered;
-      if (discovered) {
-        this.logger.log(`CalDAV calendar collection: ${discovered}`);
-      } else {
-        this.logger.warn('CalDAV: no se pudo descubrir la colección de calendario');
-      }
       return discovered;
     } catch (error) {
       this.logger.error('CalDAV discovery failed', error);
@@ -99,24 +123,61 @@ export class CaldavCalendarService {
   }
 
   private async discoverCalendarCollectionUrl(): Promise<string | null> {
-    const wellKnown = `${this.serverUrl}/.well-known/caldav`;
-    const principalUrl = await this.resolvePrincipalUrl(wellKnown);
-    if (!principalUrl) return null;
+    const candidates = this.buildCalendarUrlCandidates();
 
-    const homeSet = await this.fetchCalendarHomeSet(principalUrl);
-    if (!homeSet) return null;
-
-    const calendars = await this.listCalendarCollections(homeSet);
-    if (calendars.length === 0) return null;
-
-    const preferredName =
-      this.configService.get<string>('CALDAV_CALENDAR_NAME')?.trim().toLowerCase() || '';
-    if (preferredName) {
-      const match = calendars.find((c) => c.toLowerCase().includes(preferredName));
-      if (match) return this.toAbsoluteUrl(match);
+    for (const candidate of candidates) {
+      if (await this.verifyCalendarCollectionUrl(candidate)) {
+        this.logger.log(`CalDAV calendar collection: ${candidate}`);
+        return candidate;
+      }
     }
 
-    return this.toAbsoluteUrl(calendars[0]);
+    const viaWellKnown = await this.discoverViaWellKnown();
+    if (viaWellKnown && (await this.verifyCalendarCollectionUrl(viaWellKnown))) {
+      this.logger.log(`CalDAV calendar collection (well-known): ${viaWellKnown}`);
+      return viaWellKnown;
+    }
+
+    this.logger.warn(
+      `CalDAV: no se encontró calendario. Candidatos probados: ${candidates.join(', ')}`,
+    );
+    return null;
+  }
+
+  private buildCalendarUrlCandidates(): string[] {
+    const email = this.username;
+    const encodedEmail = encodeURIComponent(email);
+    const localPart = email.split('@')[0] ?? email;
+
+    const candidates = [
+      this.calendarUrlOverride,
+      `${this.serverUrl}/caldav/${encodedEmail}/calendar/`,
+      `${this.serverUrl}/caldav/${encodedEmail}/`,
+      `${this.serverUrl}/caldav/${localPart}/calendar/`,
+      `${this.serverUrl}/dav/${encodedEmail}/calendar/`,
+    ].filter(Boolean) as string[];
+
+    return [...new Set(candidates)];
+  }
+
+  private async verifyCalendarCollectionUrl(url: string): Promise<boolean> {
+    const propfind = `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:resourcetype/>
+    <D:displayname/>
+  </D:prop>
+</D:propfind>`;
+
+    const res = await this.request(url, 'PROPFIND', propfind, PROPFIND_HEADERS);
+    if (res.status !== 207 && !res.ok) return false;
+
+    const xml = await res.text();
+    const isCalendar =
+      /<(?:[A-Za-z0-9]+:)?calendar\s*\/?>/i.test(xml) ||
+      xml.toLowerCase().includes('calendar');
+
+    return isCalendar;
   }
 
   private async resolvePrincipalUrl(startUrl: string): Promise<string | null> {
@@ -128,10 +189,9 @@ export class CaldavCalendarService {
 </D:propfind>`;
 
     const res = await this.request(startUrl, 'PROPFIND', propfind, PROPFIND_HEADERS);
-    if (!res.ok && res.status !== 207) {
-      // Fallback: probar raíz del servidor
+    if (res.status !== 207 && !res.ok) {
       const fallback = await this.request(this.serverUrl, 'PROPFIND', propfind, PROPFIND_HEADERS);
-      if (!fallback.ok && fallback.status !== 207) return null;
+      if (fallback.status !== 207 && !fallback.ok) return null;
       const xml = await fallback.text();
       const href = extractNestedHref(xml, 'current-user-principal');
       return href ? this.toAbsoluteUrl(href) : null;
@@ -151,7 +211,7 @@ export class CaldavCalendarService {
 </D:propfind>`;
 
     const res = await this.request(principalUrl, 'PROPFIND', propfind, PROPFIND_HEADERS);
-    if (!res.ok && res.status !== 207) return null;
+    if (res.status !== 207 && !res.ok) return null;
 
     const xml = await res.text();
     const href = extractNestedHref(xml, 'calendar-home-set');
@@ -171,7 +231,7 @@ export class CaldavCalendarService {
       ...PROPFIND_HEADERS,
       Depth: '1',
     });
-    if (!res.ok && res.status !== 207) return [];
+    if (res.status !== 207 && !res.ok) return [];
 
     const xml = await res.text();
     const hrefs = extractHrefValues(xml);
@@ -179,9 +239,28 @@ export class CaldavCalendarService {
 
     return hrefs.filter((href) => {
       const absolute = this.toAbsoluteUrl(href).replace(/\/+$/, '');
-      if (absolute === normalizedHome) return false;
-      return absolute.endsWith('/');
+      return absolute !== normalizedHome;
     });
+  }
+
+  private async discoverViaWellKnown(): Promise<string | null> {
+    const wellKnown = `${this.serverUrl}/.well-known/caldav`;
+    const principalUrl = await this.resolvePrincipalUrl(wellKnown);
+    if (!principalUrl) return null;
+
+    const homeSet = await this.fetchCalendarHomeSet(principalUrl);
+    if (!homeSet) return null;
+
+    const calendars = await this.listCalendarCollections(homeSet);
+    if (calendars.length === 0) return null;
+
+    const preferredName = this.readEnv('CALDAV_CALENDAR_NAME')?.toLowerCase() || '';
+    if (preferredName) {
+      const match = calendars.find((c) => c.toLowerCase().includes(preferredName));
+      if (match) return this.toAbsoluteUrl(match).replace(/\/?$/, '/');
+    }
+
+    return this.toAbsoluteUrl(calendars[0]).replace(/\/?$/, '/');
   }
 
   /** Consulta eventos ocupados en un rango de fechas (inclusive). */
@@ -211,7 +290,7 @@ export class CaldavCalendarService {
 
     try {
       const res = await this.request(calendarUrl, 'REPORT', report, REPORT_HEADERS);
-      if (!res.ok && res.status !== 207) {
+      if (res.status !== 207 && !res.ok) {
         this.logger.warn(`CalDAV REPORT failed: HTTP ${res.status}`);
         return [];
       }
@@ -231,26 +310,31 @@ export class CaldavCalendarService {
 
   /** Crea un evento en el calendario. Devuelve la URL del recurso .ics. */
   async createEvent(data: IcsEventData): Promise<string | null> {
-    if (!this.isEnabled()) return null;
+    if (!this.isEnabled()) {
+      this.logger.warn('CalDAV createEvent omitido: integración deshabilitada');
+      return null;
+    }
 
     const calendarUrl = await this.getCalendarCollectionUrl();
     if (!calendarUrl) return null;
 
-    const icsBody = generateIcsEvent(data).replace('METHOD:REQUEST', 'METHOD:PUBLISH');
+    const icsBody = generateCaldavIcsEvent(data);
     const filename = `${data.uid.replace(/[^a-zA-Z0-9@._-]/g, '_')}.ics`;
     const eventUrl = `${calendarUrl}${filename}`;
 
     try {
       const res = await this.request(eventUrl, 'PUT', icsBody, {
         'Content-Type': 'text/calendar; charset=utf-8',
+        'If-None-Match': '*',
       });
 
-      if (res.status === 201 || res.status === 204) {
+      if (res.status === 200 || res.status === 201 || res.status === 204) {
         this.logger.log(`CalDAV event created: ${eventUrl}`);
         return eventUrl;
       }
 
-      this.logger.warn(`CalDAV PUT failed: HTTP ${res.status} ${await res.text()}`);
+      const body = await res.text();
+      this.logger.error(`CalDAV PUT failed: HTTP ${res.status} — ${body.slice(0, 500)}`);
       return null;
     } catch (error) {
       this.logger.error('CalDAV createEvent failed', error);

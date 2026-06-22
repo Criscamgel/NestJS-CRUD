@@ -53,10 +53,24 @@ export class CommercialAppointmentService {
   // ─── Helpers ───────────────────────────────────────────────
 
   private async getConfig(): Promise<AppointmentConfig> {
+    const envStart = process.env.APPOINTMENT_START_HOUR?.trim() || '09:00';
+    const envEnd = process.env.APPOINTMENT_END_HOUR?.trim() || '18:00';
+
     let config = await this.configModel.findOne().exec();
     if (!config) {
-      config = await this.configModel.create({});
+      config = await this.configModel.create({
+        startHour: envStart,
+        endHour: envEnd,
+      });
+      return config;
     }
+
+    if (config.startHour !== envStart || config.endHour !== envEnd) {
+      config.startHour = envStart;
+      config.endHour = envEnd;
+      await config.save();
+    }
+
     return config;
   }
 
@@ -367,10 +381,12 @@ export class CommercialAppointmentService {
 
     this.lastBookByIp.set(clientIp, Date.now());
 
-    // Sincronizar con calendario Namecheap (CalDAV) — no bloquea la reserva si falla
-    this.syncAppointmentToCalendar(appointment, config).catch((err) => {
+    // Sincronizar con calendario Namecheap (CalDAV)
+    try {
+      await this.syncAppointmentToCalendar(appointment, config);
+    } catch (err) {
       this.logger.error('Error sincronizando cita con CalDAV', err);
-    });
+    }
 
     // Enviar emails (no bloquear la respuesta si falla)
     this.sendBookingEmails(appointment, config).catch((err) => {
@@ -430,6 +446,13 @@ export class CommercialAppointmentService {
     if (eventUrl) {
       appointment.caldavEventUrl = eventUrl;
       await appointment.save();
+      this.logger.log(
+        `Cita ${appointment.publicId} sincronizada al calendario: ${eventUrl}`,
+      );
+    } else {
+      this.logger.error(
+        `Cita ${appointment.publicId} NO se sincronizó al calendario CalDAV. Revisa logs de CaldavCalendarService.`,
+      );
     }
   }
 

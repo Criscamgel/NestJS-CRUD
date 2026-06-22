@@ -8,7 +8,7 @@ export class AppointmentConfig extends Document {
   availableDays!: number[];
 
   /** Hora inicio jornada (Colombia) */
-  @Prop({ default: '08:00' })
+  @Prop({ default: '09:00' })
   startHour!: string;
 
   /** Hora fin jornada (Colombia) */
