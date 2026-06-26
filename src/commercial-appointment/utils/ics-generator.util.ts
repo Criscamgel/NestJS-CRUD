@@ -70,6 +70,63 @@ function nowUtcIcs(): string {
   return `${y}${m}${d}T${h}${min}${s}Z`;
 }
 
+function toLocalIcsDateTime(date: string, time: string): string {
+  const [year, month, day] = date.split('-');
+  const [hours, minutes] = time.split(':');
+  return `${year}${month}${day}T${hours}${minutes}00`;
+}
+
+function escapeIcsText(s: string): string {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\n/g, '\\n');
+}
+
+/** ICS para CalDAV (Open-Xchange / Namecheap) con TZID Colombia. */
+export function generateCaldavIcsEvent(data: IcsEventData): string {
+  const endTime = addMinutes(data.startTime, data.duration);
+  const dtStart = toLocalIcsDateTime(data.date, data.startTime);
+  const dtEnd = toLocalIcsDateTime(data.date, endTime);
+  const dtstamp = nowUtcIcs();
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Cheky//CommercialAppointments//ES',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VTIMEZONE',
+    'TZID:America/Bogota',
+    'BEGIN:STANDARD',
+    'TZOFFSETFROM:-0500',
+    'TZOFFSETTO:-0500',
+    'TZNAME:COT',
+    'DTSTART:19700101T000000',
+    'END:STANDARD',
+    'END:VTIMEZONE',
+    'BEGIN:VEVENT',
+    `UID:${data.uid}`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART;TZID=America/Bogota:${dtStart}`,
+    `DTEND;TZID=America/Bogota:${dtEnd}`,
+    `SUMMARY:${escapeIcsText(data.summary)}`,
+    `DESCRIPTION:${escapeIcsText(data.description)}`,
+    `LOCATION:${escapeIcsText(data.location)}`,
+    `ORGANIZER;CN=${escapeIcsText(data.organizerName)}:mailto:${data.organizerEmail}`,
+    `ATTENDEE;CN=${escapeIcsText(data.attendeeName)};RSVP=TRUE:mailto:${data.attendeeEmail}`,
+    'STATUS:CONFIRMED',
+    'TRANSP:OPAQUE',
+    'BEGIN:VALARM',
+    'TRIGGER:-PT15M',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:Reunion comercial con Cheky en 15 minutos',
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
+
 export function generateIcsEvent(data: IcsEventData): string {
   const endTime = addMinutes(data.startTime, data.duration);
   const dtStart = toUtcIcsDateTime(data.date, data.startTime);
@@ -77,8 +134,7 @@ export function generateIcsEvent(data: IcsEventData): string {
   const dtstamp = nowUtcIcs();
 
   // Escapar caracteres especiales en texto
-  const escapeIcs = (s: string) =>
-    s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  const escapeIcs = escapeIcsText;
 
   return [
     'BEGIN:VCALENDAR',

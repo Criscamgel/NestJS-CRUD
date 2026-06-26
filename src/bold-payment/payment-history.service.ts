@@ -15,6 +15,7 @@ import {
   resolvePagination,
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
+import { MembershipsService } from 'src/memberships/memberships.service';
 
 type PaymentHistoryRow = {
   ref: string;
@@ -43,6 +44,7 @@ export class PaymentHistoryService {
     private readonly userModel: Model<User>,
     @InjectModel(Company.name)
     private readonly companyModel: Model<Company>,
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   /** Listado paginado de pagos completados. */
@@ -65,11 +67,29 @@ export class PaymentHistoryService {
       ...companyFilter,
     };
 
-    // Buscar por referencia o planId (se enriquece con nombre después)
-    const searchFilter = buildRegexOrFilter<BoldCheckoutIntent>(
-      paginationQuery.search,
-      ['ref', 'planId'],
-    );
+    // Buscar por referencia, planId y (solo superAdmin) nombre de empresa
+    let searchFilter: Record<string, unknown> = {};
+    const searchTerm = paginationQuery.search?.trim();
+    if (searchTerm) {
+      const regex = new RegExp(searchTerm, 'i');
+      const orClauses: Record<string, unknown>[] = [
+        { ref: regex },
+        { planId: regex },
+      ];
+
+      if (isSuperAdmin) {
+        const matchingCompanies = await this.companyModel
+          .find({ name: regex })
+          .select('id')
+          .lean();
+        const matchingCompanyIds = matchingCompanies.map((c) => c.id);
+        if (matchingCompanyIds.length > 0) {
+          orClauses.push({ companyId: { $in: matchingCompanyIds } });
+        }
+      }
+
+      searchFilter = { $or: orClauses };
+    }
 
     const filter =
       Object.keys(searchFilter).length > 0
@@ -140,6 +160,12 @@ export class PaymentHistoryService {
     const isSuperAdmin = requesterRoles.includes('superAdmin');
     if (!isSuperAdmin && intent.companyId !== requester.company) {
       throw new ForbiddenException('No tienes permiso para descargar esta factura.');
+    }
+
+    if (!isSuperAdmin && requester.company) {
+      await this.membershipsService.assertActiveMembershipForWrite(
+        String(requester.company),
+      );
     }
 
     const plan = await this.planModel.findOne({ id: intent.planId }).lean();

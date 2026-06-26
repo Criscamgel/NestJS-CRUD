@@ -16,3 +16,16 @@ export function userFilterReactivatableByMembership(): Record<string, unknown> {
     deactivationReason: { $ne: USER_DEACTIVATION_REASON_ADMIN },
   };
 }
+
+/** Administrador de empresa (no superAdmin). */
+export function isCompanyAdminActor(user: {
+  roles?: string[];
+  role?: string;
+}): boolean {
+  const roles = user.roles || [];
+  const legacy = user.role;
+  const isSuper =
+    roles.includes('superAdmin') || legacy === 'superAdmin';
+  if (isSuper) return false;
+  return roles.includes('admin') || legacy === 'admin';
+}

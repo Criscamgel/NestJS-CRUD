@@ -67,6 +67,10 @@ export class CommercialAppointment extends Document {
   @Prop()
   cancellationReason?: string;
 
+  /** URL del evento en CalDAV (Namecheap Private Email / OX) */
+  @Prop()
+  caldavEventUrl?: string;
+
   /** Timestamps automáticos de Mongoose */
   createdAt!: Date;
   updatedAt!: Date;

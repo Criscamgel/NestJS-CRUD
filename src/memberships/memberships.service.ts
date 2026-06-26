@@ -37,7 +37,8 @@ function monthKey(d = new Date()): string {
 
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
+  // Cada "mes" de plan equivale a 30 días calendario exactos
+  d.setDate(d.getDate() + (months * 30));
   return d;
 }
 
@@ -258,8 +259,8 @@ export class MembershipsService {
   }
 
   /**
-   * Desactiva cuentas de la empresa (admin y user) solo cuando no hay membresía vigente.
-   * Agotar el cupo de checks no desactiva cuentas.
+   * Desactiva cuentas de la empresa (solo rol user) cuando no hay membresía vigente.
+   * Los administradores mantienen acceso de lectura con restricciones de escritura.
    */
   private async deactivateCompanyUsersWhenMembershipExpired(
     companyId: string,
@@ -280,12 +281,47 @@ export class MembershipsService {
       return;
     }
 
-    await this.userModel.updateMany(this.companyMembersFilter(cid), {
-      $set: {
-        isActive: false,
+    // Solo desactivar usuarios con rol 'user', NO admins ni superAdmins
+    await this.userModel.updateMany(
+      {
+        ...this.normalCheckUserFilter(cid),
+      },
+      {
+        $set: {
+          isActive: false,
+          deactivationReason: USER_DEACTIVATION_REASON_MEMBERSHIP,
+        },
+      },
+    );
+
+    await this.reactivateCompanyAdminsDeactivatedByMembership(cid);
+  }
+
+  /**
+   * Los admin de empresa no deben quedar inactivos cuando vence la membresía.
+   * Corrige desactivaciones erróneas (legacy) con `membership_expired`.
+   */
+  async reactivateCompanyAdminsDeactivatedByMembership(
+    companyId: string,
+  ): Promise<void> {
+    const cid = this.normalizeCompanyId(companyId);
+    if (!cid) return;
+
+    await this.userModel.updateMany(
+      {
+        ...this.userCompanyFilter(cid),
+        $or: [{ roles: { $in: ['admin'] } }, { role: 'admin' }],
+        $nor: [
+          { roles: 'superAdmin' },
+          { roles: { $in: ['superAdmin'] } },
+        ],
         deactivationReason: USER_DEACTIVATION_REASON_MEMBERSHIP,
       },
-    });
+      {
+        $set: { isActive: true },
+        $unset: { deactivationReason: '' },
+      },
+    );
   }
 
   private async reactivateCompanyUsersForCompany(companyId: string): Promise<void> {
@@ -657,6 +693,18 @@ export class MembershipsService {
     }
   }
 
+  /**
+   * Bloquea mutaciones (editar, activar/desactivar, descargas) sin membresía activa.
+   */
+  async assertActiveMembershipForWrite(companyId: string): Promise<void> {
+    const m = await this.getActiveMembershipForCompany(companyId);
+    if (!m) {
+      throw new ForbiddenException(
+        'Tu membresía ha vencido. Renueva tu plan para realizar esta acción.',
+      );
+    }
+  }
+
   /** Alinea el contador mensual si cambió el mes calendario. */
   async syncMonthForCompany(companyId: string): Promise<void> {
     const m = await this.getActiveMembershipForCompany(companyId);
@@ -1012,6 +1060,8 @@ export class MembershipsService {
       planName,
       membershipExpiresAt:
         m.expiresAt instanceof Date ? m.expiresAt.toISOString() : String(m.expiresAt),
+      membershipStartedAt:
+        m.startedAt instanceof Date ? m.startedAt.toISOString() : String(m.startedAt ?? ''),
       daysUntilExpiry,
       checksUsedInPeriod: usedPeriod,
       checksPendingMonthly,

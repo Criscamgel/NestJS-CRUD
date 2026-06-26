@@ -28,7 +28,7 @@ import {
 } from 'src/common/utils/pagination';
 import { buildRegexOrFilter } from 'src/common/utils/mongo-search';
 import { MembershipsService } from 'src/memberships/memberships.service';
-import { USER_DEACTIVATION_REASON_ADMIN } from './user-account.constants';
+import { USER_DEACTIVATION_REASON_ADMIN, isCompanyAdminActor } from './user-account.constants';
 import { ValidRoles } from 'src/auth/interfaces';
 import { CompanyBranchService } from 'src/company-branch/company-branch.service';
 
@@ -46,6 +46,14 @@ export class UsersService {
     private readonly membershipsService: MembershipsService,
     private readonly companyBranchService: CompanyBranchService,
   ) {}
+
+  /** Admin de empresa: exige membresía activa para mutaciones (no aplica a superAdmin). */
+  private async assertCompanyAdminWriteMembership(actor: User): Promise<void> {
+    if (!isCompanyAdminActor(actor)) return;
+    const companyId = actor.company ? String(actor.company).trim() : '';
+    if (!companyId) return;
+    await this.membershipsService.assertActiveMembershipForWrite(companyId);
+  }
 
   async create(createUserDto: CreateUserDto, creator: User) {
     const creatorRoles = creator.roles || [];
@@ -114,7 +122,11 @@ export class UsersService {
     }
 
     try {
-      if (createUserDto.role === ValidRoles.user && createUserDto.company) {
+      if (
+        !isCreatorSuperAdmin &&
+        createUserDto.role === ValidRoles.user &&
+        createUserDto.company
+      ) {
         await this.membershipsService.assertCanAddNormalUser(
           String(createUserDto.company),
         );
@@ -427,6 +439,7 @@ export class UsersService {
           'Solo puedes activar o desactivar usuarios con rol user',
         );
       }
+      await this.assertCompanyAdminWriteMembership(requester);
     }
 
     const nextActive = !user.isActive;
@@ -472,6 +485,7 @@ export class UsersService {
           `Tu usuario administrador no tiene permisos suficientes para editar a este usuario. Solo puedes editar perfiles de tipo 'user'.`,
         );
       }
+      await this.assertCompanyAdminWriteMembership(editor);
     } else if (isEditorSuperAdmin) {
       if (!isTargetAdmin && !isTargetUser) {
         throw new UnauthorizedException(

@@ -93,10 +93,28 @@ export class CompanyBranchService {
     }
   }
 
+  /** Admin de empresa: exige membresía activa para editar o activar/desactivar sedes. */
+  private async assertWriteMembershipIfCompanyAdmin(
+    actor: User,
+    companyId: string,
+  ): Promise<void> {
+    if (this.isSuper(actor)) return;
+    const roles = actor.roles || [];
+    const legacy = (actor as { role?: string }).role;
+    const isAdmin = roles.includes('admin') || legacy === 'admin';
+    if (isAdmin) {
+      await this.membershipsService.assertActiveMembershipForWrite(
+        companyId.trim(),
+      );
+    }
+  }
+
   async create(companyId: string, dto: CreateCompanyBranchDto, actor: User) {
     this.assertManageCompany(actor, companyId);
     await this.assertCompanyExists(companyId);
-    await this.membershipsService.assertCanAddBranch(companyId);
+    if (!this.isSuper(actor)) {
+      await this.membershipsService.assertCanAddBranch(companyId);
+    }
 
     const counter = await this.counterIdModel.findByIdAndUpdate(
       'company_branches',
@@ -257,11 +275,8 @@ export class CompanyBranchService {
     dto: UpdateCompanyBranchDto,
     actor: User,
   ) {
-    if (!this.isSuper(actor)) {
-      throw new ForbiddenException(
-        'Solo el super administrador puede editar los datos de una sede.',
-      );
-    }
+    this.assertManageCompany(actor, companyId);
+    await this.assertWriteMembershipIfCompanyAdmin(actor, companyId);
     await this.findOne(companyId, branchId, actor);
 
     const patch: Record<string, unknown> = {};
@@ -286,6 +301,7 @@ export class CompanyBranchService {
 
   async toggleStatus(companyId: string, branchId: string, actor: User) {
     this.assertManageCompany(actor, companyId);
+    await this.assertWriteMembershipIfCompanyAdmin(actor, companyId);
     const branch = await this.branchModel
       .findOne({ id: branchId.trim(), companyId: companyId.trim() })
       .exec();

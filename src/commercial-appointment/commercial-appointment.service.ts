@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -29,12 +30,15 @@ import {
 } from 'src/email/email-templates.helper';
 import { generateIcsEvent } from './utils/ics-generator.util';
 import { PaginationQueryDto, DEFAULT_PAGE, DEFAULT_LIMIT } from 'src/common/dto/pagination-query.dto';
+import { CaldavCalendarService } from './calendar/caldav-calendar.service';
+import type { BusyInterval } from './calendar/parse-ics-busy.util';
+import { COMMERCIAL_APPOINTMENT_SCHEDULE } from './commercial-appointment.constants';
 
 /** Antispam: mismo IP no puede crear otra cita antes de este intervalo (ms) */
 const RATE_WINDOW_MS = 120_000;
 
 @Injectable()
-export class CommercialAppointmentService {
+export class CommercialAppointmentService implements OnModuleInit {
   private readonly logger = new Logger(CommercialAppointmentService.name);
   private readonly lastBookByIp = new Map<string, number>();
 
@@ -45,15 +49,54 @@ export class CommercialAppointmentService {
     private readonly configModel: Model<AppointmentConfig>,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    private readonly caldavCalendarService: CaldavCalendarService,
   ) {}
+
+  async onModuleInit() {
+    const result = await this.configModel.updateMany(
+      {},
+      {
+        $set: {
+          startHour: COMMERCIAL_APPOINTMENT_SCHEDULE.startHour,
+          endHour: COMMERCIAL_APPOINTMENT_SCHEDULE.endHour,
+          slotDuration: COMMERCIAL_APPOINTMENT_SCHEDULE.slotDurationMinutes,
+          allowedDurations: [...COMMERCIAL_APPOINTMENT_SCHEDULE.allowedDurations],
+          timezone: COMMERCIAL_APPOINTMENT_SCHEDULE.timezone,
+          maxAdvanceDays: COMMERCIAL_APPOINTMENT_SCHEDULE.maxAdvanceDays,
+          availableDays: [...COMMERCIAL_APPOINTMENT_SCHEDULE.availableDays],
+        },
+      },
+    );
+    this.logger.log(
+      `Horario comercial citas (fijo): ${COMMERCIAL_APPOINTMENT_SCHEDULE.startHour}-${COMMERCIAL_APPOINTMENT_SCHEDULE.endHour} COT. Configs sync: ${result.modifiedCount}`,
+    );
+  }
+
+  private getBusinessHours(): { startHour: string; endHour: string } {
+    return {
+      startHour: COMMERCIAL_APPOINTMENT_SCHEDULE.startHour,
+      endHour: COMMERCIAL_APPOINTMENT_SCHEDULE.endHour,
+    };
+  }
 
   // ─── Helpers ───────────────────────────────────────────────
 
   private async getConfig(): Promise<AppointmentConfig> {
     let config = await this.configModel.findOne().exec();
+    const hours = this.getBusinessHours();
+
     if (!config) {
-      config = await this.configModel.create({});
+      config = await this.configModel.create({
+        startHour: hours.startHour,
+        endHour: hours.endHour,
+        allowedDurations: [60],
+      });
+      return config;
     }
+
+    // Env/default siempre gana — evita quedar pegado a 08:00 en MongoDB
+    config.startHour = hours.startHour;
+    config.endHour = hours.endHour;
     return config;
   }
 
@@ -76,17 +119,44 @@ export class CommercialAppointmentService {
     return appointment.meetingLinkOverride || appointment.meetingLink;
   }
 
+  private hasTimeOverlap(
+    slotStart: number,
+    slotEnd: number,
+    busyStart: number,
+    busyEnd: number,
+  ): boolean {
+    return slotStart < busyEnd && slotEnd > busyStart;
+  }
+
+  private isSlotBusy(
+    dateStr: string,
+    slotStart: number,
+    slotEnd: number,
+    dayAppointments: Array<{ startTime: string; endTime: string }>,
+    caldavBusy: BusyInterval[],
+  ): boolean {
+    const appointmentCollision = dayAppointments.some((a) => {
+      const aStart = this.timeToMinutes(a.startTime);
+      const aEnd = this.timeToMinutes(a.endTime);
+      return this.hasTimeOverlap(slotStart, slotEnd, aStart, aEnd);
+    });
+    if (appointmentCollision) return true;
+
+    return caldavBusy
+      .filter((b) => b.date === dateStr)
+      .some((b) => this.hasTimeOverlap(slotStart, slotEnd, b.startMinutes, b.endMinutes));
+  }
+
   // ─── Public: Config ────────────────────────────────────────
 
   async getPublicConfig() {
-    const config = await this.getConfig();
     return {
-      availableDays: config.availableDays,
-      startHour: config.startHour,
-      endHour: config.endHour,
-      allowedDurations: config.allowedDurations,
-      timezone: config.timezone,
-      maxAdvanceDays: config.maxAdvanceDays,
+      availableDays: [...COMMERCIAL_APPOINTMENT_SCHEDULE.availableDays],
+      startHour: COMMERCIAL_APPOINTMENT_SCHEDULE.startHour,
+      endHour: COMMERCIAL_APPOINTMENT_SCHEDULE.endHour,
+      allowedDurations: [...COMMERCIAL_APPOINTMENT_SCHEDULE.allowedDurations],
+      timezone: COMMERCIAL_APPOINTMENT_SCHEDULE.timezone,
+      maxAdvanceDays: COMMERCIAL_APPOINTMENT_SCHEDULE.maxAdvanceDays,
     };
   }
 
@@ -102,6 +172,8 @@ export class CommercialAppointmentService {
 
     const startOfMonth = new Date(year, monthIndex, 1);
     const endOfMonth = new Date(year, monthIndex + 1, 0);
+    const monthStartStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(endOfMonth.getDate()).padStart(2, '0')}`;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -119,9 +191,15 @@ export class CommercialAppointmentService {
       .lean()
       .exec();
 
-    const startMinutes = this.timeToMinutes(config.startHour);
-    const endMinutes = this.timeToMinutes(config.endHour);
-    const slotInterval = config.slotDuration;
+    const caldavBusy = await this.caldavCalendarService.fetchBusyIntervals(
+      monthStartStr,
+      monthEndStr,
+    );
+
+    const hours = this.getBusinessHours();
+    const startMinutes = this.timeToMinutes(hours.startHour);
+    const endMinutes = this.timeToMinutes(hours.endHour);
+    const slotInterval = COMMERCIAL_APPOINTMENT_SCHEDULE.slotDurationMinutes;
 
     const result: { date: string; slots: string[] }[] = [];
 
@@ -156,14 +234,7 @@ export class CommercialAppointmentService {
         const slotStart = m;
         const slotEnd = m + duration;
 
-        // Verificar colisión con citas existentes
-        const hasCollision = dayAppointments.some((a) => {
-          const aStart = this.timeToMinutes(a.startTime);
-          const aEnd = this.timeToMinutes(a.endTime);
-          return slotStart < aEnd && slotEnd > aStart;
-        });
-
-        if (!hasCollision) {
+        if (!this.isSlotBusy(dateStr, slotStart, slotEnd, dayAppointments, caldavBusy)) {
           slots.push(this.minutesToTime(m));
         }
       }
@@ -296,6 +367,24 @@ export class CommercialAppointmentService {
       );
     }
 
+    const caldavBusyOnDay = await this.caldavCalendarService.fetchBusyIntervals(
+      dto.date,
+      dto.date,
+    );
+    if (
+      this.isSlotBusy(
+        dto.date,
+        startMinutes,
+        endMinutes,
+        [],
+        caldavBusyOnDay,
+      )
+    ) {
+      throw new BadRequestException(
+        'Este horario ya no está disponible. Selecciona otro.',
+      );
+    }
+
     const publicId = this.generatePublicId();
     const cancellationToken = crypto.randomUUID();
     const meetingLink = `${config.defaultMeetingLinkBase}${publicId}`;
@@ -318,6 +407,13 @@ export class CommercialAppointmentService {
 
     this.lastBookByIp.set(clientIp, Date.now());
 
+    // Sincronizar con calendario Namecheap (CalDAV)
+    try {
+      await this.syncAppointmentToCalendar(appointment, config);
+    } catch (err) {
+      this.logger.error('Error sincronizando cita con CalDAV', err);
+    }
+
     // Enviar emails (no bloquear la respuesta si falla)
     this.sendBookingEmails(appointment, config).catch((err) => {
       this.logger.error('Error enviando emails de cita', err);
@@ -335,6 +431,55 @@ export class CommercialAppointmentService {
         meetingLink,
       },
     };
+  }
+
+  private async syncAppointmentToCalendar(
+    appointment: CommercialAppointment,
+    config: AppointmentConfig,
+  ) {
+    if (!this.caldavCalendarService.isEnabled()) return;
+
+    const inbox =
+      this.configService.get<string>('APPOINTMENT_INBOX') || 'ventas@cheky.co';
+    const effectiveLink = this.getEffectiveMeetingLink(appointment);
+    const cancelBaseUrl =
+      this.configService.get<string>('PUBLIC_LANDING_URL') || 'https://cheky.co';
+    const cancelLink = `${cancelBaseUrl.replace(/\/+$/, '')}/cita/${appointment.publicId}/cancelar?token=${encodeURIComponent(appointment.cancellationToken)}`;
+
+    const eventUrl = await this.caldavCalendarService.createEvent({
+      date: this.formatDateStr(appointment.date),
+      startTime: appointment.startTime,
+      duration: appointment.duration,
+      summary: `Cita comercial — ${appointment.company}`,
+      description: [
+        `Lead: ${appointment.name}`,
+        `Email: ${appointment.email}`,
+        appointment.phone ? `Tel: ${appointment.phone}` : null,
+        `Empresa: ${appointment.company}`,
+        `Enlace reunión: ${effectiveLink}`,
+        `Cancelar: ${cancelLink}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      location: effectiveLink,
+      organizerEmail: inbox,
+      organizerName: 'Team Cheky',
+      attendeeEmail: appointment.email,
+      attendeeName: appointment.name,
+      uid: `${appointment.publicId}@cheky.co`,
+    });
+
+    if (eventUrl) {
+      appointment.caldavEventUrl = eventUrl;
+      await appointment.save();
+      this.logger.log(
+        `Cita ${appointment.publicId} sincronizada al calendario: ${eventUrl}`,
+      );
+    } else {
+      this.logger.error(
+        `Cita ${appointment.publicId} NO se sincronizó al calendario CalDAV. Revisa logs de CaldavCalendarService.`,
+      );
+    }
   }
 
   private async sendBookingEmails(
@@ -408,7 +553,14 @@ export class CommercialAppointmentService {
       to: inbox,
       subject: `Nueva cita comercial — ${appointment.company} (${appointment.startTime})`,
       htmlBody: teamHtml,
-      attachements: baseAttachments,
+      attachements: [
+        ...baseAttachments,
+        {
+          filename: 'reunion-cheky.ics',
+          content: Buffer.from(icsContent, 'utf-8'),
+          contentType: 'text/calendar; method=REQUEST',
+        },
+      ],
     });
   }
 
@@ -459,6 +611,14 @@ export class CommercialAppointmentService {
     appointment.cancelledAt = new Date();
     appointment.cancellationReason = dto.reason || undefined;
     await appointment.save();
+
+    if (appointment.caldavEventUrl) {
+      this.caldavCalendarService
+        .deleteEvent(appointment.caldavEventUrl)
+        .catch((err) => {
+          this.logger.error('Error eliminando evento CalDAV', err);
+        });
+    }
 
     // Notificar al equipo
     this.sendCancellationEmail(appointment).catch((err) => {
